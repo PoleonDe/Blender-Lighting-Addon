@@ -1,4 +1,5 @@
 import bpy
+from mathutils import Vector 
 # Functions
 def CreateEmpty(position : tuple):
     # Add new Empty Object
@@ -31,15 +32,36 @@ class OBJECT_OT_add_light_and_empty(bpy.types.Operator):
     bl_label = "Add Light and Empty"
     bl_options = {'REGISTER', 'UNDO'}
 
+    #first_mouse_x = Vector.zero
 
 
     def invoke(self, context, event):
-        print("invoke")
         emp = CreateEmpty((0,0,0))
         lgt = CreateLight((0,0,3))
         lgt.parent = emp
-        print(f"event is {event.mouse_region_x} and {event.mouse_region_y}")
-        return {'FINISHED'}
+        # if context.object:
+        #     self.first_mouse_x = event.mouse_x
+        #     self.first_value = context.object.location.x
+
+        context.window_manager.modal_handler_add(self)
+        return {'RUNNING_MODAL'}
+        # else:
+        #     self.report({'WARNING'}, "No active object, could not finish")
+        #     return {'CANCELLED'}
+
+    def modal(self, context, event):
+        if event.type == 'MOUSEMOVE':
+            print('mouse offset {event.mouse_region_x}')
+
+        elif event.type == 'LEFTMOUSE':
+            print('finish modal')
+            return {'FINISHED'}
+
+        elif event.type in {'RIGHTMOUSE', 'ESC'}:
+            print('canceled modal')
+            return {'CANCELLED'}
+
+        return {'RUNNING_MODAL'}
 
 
 # Registering and Hotkeys
