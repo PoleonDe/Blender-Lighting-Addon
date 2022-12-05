@@ -1,5 +1,17 @@
 import bpy
-from mathutils import Vector 
+import mathutils
+from math import radians
+
+# Math
+def lerp(a: float, b: float, t: float) -> float:
+    return (1 - t) * a + t * b
+
+def inv_lerp(a: float, b: float, v: float) -> float:
+    return (v - a) / (b - a)
+
+def remap(v: float, i_min: float, i_max: float, o_min: float, o_max: float) -> float:
+    return lerp(o_min, o_max, inv_lerp(i_min, i_max, v))
+
 # Functions
 def CreateEmpty(position : tuple):
     # Add new Empty Object
@@ -33,12 +45,13 @@ class OBJECT_OT_add_light_and_empty(bpy.types.Operator):
     bl_options = {'REGISTER', 'UNDO'}
 
     #first_mouse_x = Vector.zero
-
+    emptyObjName = ""
 
     def invoke(self, context, event):
-        emp = CreateEmpty((0,0,0))
-        lgt = CreateLight((0,0,3))
-        lgt.parent = emp
+        emptyObject = CreateEmpty((0,0,0))
+        self.emptyObjName = emptyObject.name #Set Name for Reference
+        lgt = CreateLight((3,0,0))
+        lgt.parent = emptyObject
         # if context.object:
         #     self.first_mouse_x = event.mouse_x
         #     self.first_value = context.object.location.x
@@ -51,7 +64,11 @@ class OBJECT_OT_add_light_and_empty(bpy.types.Operator):
 
     def modal(self, context, event):
         if event.type == 'MOUSEMOVE':
-            print('mouse offset {event.mouse_region_x}')
+            x = radians(remap(event.mouse_region_y /context.area.height,0.0,1.0,90.0,-90.0))
+            y = radians(remap(event.mouse_region_x /context.area.width,0.0,1.0,0.0,360.0))
+            rot = mathutils.Vector((0.0, x, y))
+            bpy.data.objects[self.emptyObjName].rotation_euler = rot
+            print(f'mouse offset {event.mouse_region_x} width is {x} height is {y}')
 
         elif event.type == 'LEFTMOUSE':
             print('finish modal')
