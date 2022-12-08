@@ -1,74 +1,106 @@
 import bpy
 import mathutils
 from math import radians
-#from bpy_extras import view3d_utils
+from bpy_extras import view3d_utils
 
-# # Raycast
-# def raycast(context, event):
-#     """Run this function on left mouse, execute the ray cast"""
-#     # get the context arguments
-#     scene = context.scene # scene
-#     region = context.region # region
-#     rv3d = context.region_data # region data
-#     coord = event.mouse_region_x, event.mouse_region_y # mouse cords
 
-#     # get the ray from the viewport and mouse
-#     view_vector = view3d_utils.region_2d_to_vector_3d(region, rv3d, coord)
-#     ray_origin = view3d_utils.region_2d_to_origin_3d(region, rv3d, coord)
+# Wrap Cursor when its at first or last pixel of window
+def wrapMouseInWindow(context : bpy.types.Context, event : bpy.types.Event):
+    width = context.area.width
+    height = context.area.height
 
-#     ray_target = ray_origin + view_vector
+    print(f'the mouse position is ({event.mouse_x}, {event.mouse_y})')
+    print(f'the width and height is ({width}, {height})')
+    print(f'the context area xy is ({context.area.x}, {context.area.y})')
+    print(f'the context region xy is ({context.region.x}, {context.region.y})')
 
-#     def visible_objects_and_duplis():
-#         """Loop over (object, matrix) pairs (mesh only)"""
+    if event.mouse_x <= context.area.x:
+        context.window.cursor_warp(context.area.x + width - 1, event.mouse_y)
 
-#         depsgraph = context.evaluated_depsgraph_get()
-#         for dup in depsgraph.object_instances:
-#             if dup.is_instance:  # Real dupli instance
-#                 obj = dup.instance_object
-#                 yield (obj, dup.matrix_world.copy())
-#             else:  # Usual object
-#                 obj = dup.object
-#                 yield (obj, obj.matrix_world.copy())
+    if event.mouse_x >= context.area.x + width:
+        context.window.cursor_warp(context.area.x , event.mouse_y)
 
-#     def obj_ray_cast(obj, matrix):
-#         """Wrapper for ray casting that moves the ray into object space"""
+    if event.mouse_y <= context.area.y:
+        context.window.cursor_warp(event.mouse_x, context.area.y)
 
-#         # get the ray relative to the object
-#         matrix_inv = matrix.inverted()
-#         ray_origin_obj = matrix_inv @ ray_origin
-#         ray_target_obj = matrix_inv @ ray_target
-#         ray_direction_obj = ray_target_obj - ray_origin_obj
+    if event.mouse_y >= context.area.y + height:
+        context.window.cursor_warp(event.mouse_x, context.area.y + height)
 
-#         # cast the ray
-#         success, location, normal, face_index = obj.ray_cast(ray_origin_obj, ray_direction_obj)
+def resetCursorToCenterRegion(context : bpy.types.Context):
+    region = context.region
+    cx = region.width // 2 + region.x
+    cy = region.height // 2 + region.y
+    context.window.cursor_warp(cx, cy)
+    
+# Raycast
+def raycast(context : bpy.types.Context, event : bpy.types.Event):
+    """Run this function on left mouse, execute the ray cast"""
+    # get the context arguments
+    scene = context.scene # scene
+    region = context.region # region
+    rv3d = context.region_data # region data
+    coord = event.mouse_region_x, event.mouse_region_y # mouse cords
 
-#         if success:
-#             return location, normal, face_index
-#         else:
-#             return None, None, None
+    # get the ray from the viewport and mouse
+    view_vector = view3d_utils.region_2d_to_vector_3d(region, rv3d, coord)
+    ray_origin = view3d_utils.region_2d_to_origin_3d(region, rv3d, coord)
 
-#     # cast rays and find the closest object
-#     best_length_squared = -1.0
-#     best_obj = None
+    ray_target = ray_origin + view_vector
 
-#     for obj, matrix in visible_objects_and_duplis():
-#         if obj.type == 'MESH':
-#             hit, normal, face_index = obj_ray_cast(obj, matrix)
-#             if hit is not None:
-#                 hit_world = matrix @ hit
-#                 scene.cursor.location = hit_world
-#                 length_squared = (hit_world - ray_origin).length_squared
-#                 if best_obj is None or length_squared < best_length_squared:
-#                     best_length_squared = length_squared
-#                     best_obj = obj
+    def visible_objects_and_duplis():
+        """Loop over (object, matrix) pairs (mesh only)"""
 
-#     # now we have the object under the mouse cursor,
-#     # we could do lots of stuff but for the example just select.
-#     if best_obj is not None:
-#         # for selection etc. we need the original object,
-#         # evaluated objects are not in viewlayer
-#         best_original = best_obj.original
-#         return hit, normal, best_original
+        depsgraph = context.evaluated_depsgraph_get()
+        for dup in depsgraph.object_instances:
+            if dup.is_instance:  # Real dupli instance
+                obj = dup.instance_object
+                yield (obj, dup.matrix_world.copy())
+            else:  # Usual object
+                obj = dup.object
+                yield (obj, obj.matrix_world.copy())
+
+    def obj_ray_cast(obj, matrix):
+        """Wrapper for ray casting that moves the ray into object space"""
+
+        # get the ray relative to the object
+        matrix_inv = matrix.inverted()
+        ray_origin_obj = matrix_inv @ ray_origin
+        ray_target_obj = matrix_inv @ ray_target
+        ray_direction_obj = ray_target_obj - ray_origin_obj
+
+        # cast the ray
+        success, location, normal, face_index = obj.ray_cast(ray_origin_obj, ray_direction_obj)
+
+        if success:
+            return location, normal, face_index
+        else:
+            return None, None, None
+
+    # cast rays and find the closest object
+    best_length_squared = -1.0
+    best_obj = None
+    hit_world = None
+
+    for obj, matrix in visible_objects_and_duplis():
+        if obj.type == 'MESH':
+            hit, normal, face_index = obj_ray_cast(obj, matrix)
+            if hit is not None:
+                hit_world = matrix @ hit
+                #scene.cursor.location = hit_world
+                length_squared = (hit_world - ray_origin).length_squared
+                if best_obj is None or length_squared < best_length_squared:
+                    best_length_squared = length_squared
+                    best_obj = obj
+
+    # now we have the object under the mouse cursor,
+    # we could do lots of stuff but for the example just select.
+    if best_obj is not None:
+        # for selection etc. we need the original object,
+        # evaluated objects are not in viewlayer
+        best_original = best_obj.original
+        return hit_world, normal, best_original
+    else: 
+        return None,None,None
 
 
 # Math
@@ -118,31 +150,53 @@ class OBJECT_OT_add_light_and_empty(bpy.types.Operator):
     lgtObjName = ""
     zoomPercent = 0.1
 
+
+    @classmethod
+    def poll(cls, context):
+        return context.area.type == 'VIEW_3D'
+
     def invoke(self, context, event):
         # Vectors
-        creationPoint = mathutils.Vector((0,0,0))
-        offset  = mathutils.Vector((3,0,0))
-        # Creation
-        emptyObject = CreateEmpty(creationPoint)
-        lgtObject = CreateLight(creationPoint + offset)
-        # Set Properties on Objects
-        self.emptyObjName = emptyObject.name #Set Name for Reference
-        self.lgtObjName = lgtObject.name #Set Name for Reference
-        lgtObject.parent = emptyObject
+        hit, normal, best_original = raycast(context,event)
+        print(f'hit point is {hit} normal is  {normal}, best Original Object is {best_original}')
+        if hit:
+            creationPoint = mathutils.Vector((0,0,0))
+            offset  = mathutils.Vector((3,0,0))
+            # Creation
+            emptyObject = CreateEmpty(creationPoint)
+            lgtObject = CreateLight(offset)
+            # Set Properties on Objects
+            self.emptyObjName = emptyObject.name #Set Name for Reference
+            self.lgtObjName = lgtObject.name #Set Name for Reference
+            lgtObject.parent = emptyObject
+            emptyObject.location = hit
 
-        context.window_manager.modal_handler_add(self)
-        return {'RUNNING_MODAL'}
-        # else:
-        #     self.report({'WARNING'}, "No active object, could not finish")
-        #     return {'CANCELLED'}
+            context.window_manager.modal_handler_add(self)
+            return {'RUNNING_MODAL'}
+        else:
+            return {'CANCELLED'}
+
 
     def modal(self, context, event):
-        if event.type == 'MOUSEMOVE':
+
+        wrapMouseInWindow(context,event) # wrap mouse movement
+
+        if event.type == 'MOUSEMOVE' and event.shift:
+            #bpy.data.objects[self.emptyObjName].location += mathutils.Vector((0,0,(event.mouse_prev_y - event.mouse_y) * 0.02))
+            hit, normal, best_original = raycast(context,event)
+            if hit:
+                bpy.data.objects[self.emptyObjName].location = hit
+                print('mousemove')
+
+        elif event.type == 'MOUSEMOVE' and event.alt:
+            obj : bpy.types.PointLight = bpy.data.objects[self.lgtObjName].data
+            obj.shadow_soft_size *= 1 + ((event.mouse_region_x - event.mouse_prev_x )* 0.02)
+
+        elif event.type == 'MOUSEMOVE':
             x = radians(remap(event.mouse_region_y /context.area.height,0.0,1.0,90.0,-90.0))
             y = radians(remap(event.mouse_region_x /context.area.width,0.0,1.0,0.0,360.0))
             rot = mathutils.Vector((0.0, x, y))
             bpy.data.objects[self.emptyObjName].rotation_euler = rot
-            print(f'mouse offset {event.mouse_region_x} width is {x} height is {y}')
 
         elif event.type == 'LEFTMOUSE':
             print('finish modal')
@@ -151,17 +205,25 @@ class OBJECT_OT_add_light_and_empty(bpy.types.Operator):
         elif event.type in {'RIGHTMOUSE', 'ESC'}:
             print('canceled modal')
             return {'CANCELLED'}
-        
+
+        elif event.type == 'WHEELUPMOUSE' and event.shift:
+            obj : bpy.types.PointLight = bpy.data.objects[self.lgtObjName].data
+            obj.energy *= 1.25
+
         elif event.type == 'WHEELUPMOUSE':
-            obj = bpy.data.objects[self.lgtObjName]
-            pos = mathutils.Vector((obj.location[0] * (1 + self.zoomPercent), obj.location[1], obj.location[2]))
-            obj.location = pos
-            
-        elif event.type == 'WHEELDOWNMOUSE':
             obj = bpy.data.objects[self.lgtObjName]
             pos = mathutils.Vector((obj.location[0] * (1 - self.zoomPercent), obj.location[1], obj.location[2]))
             obj.location = pos
 
+        elif event.type == 'WHEELDOWNMOUSE' and event.shift:
+            obj : bpy.types.PointLight = bpy.data.objects[self.lgtObjName].data
+            obj.energy *= 0.75
+
+        elif event.type == 'WHEELDOWNMOUSE':
+            obj = bpy.data.objects[self.lgtObjName]
+            pos = mathutils.Vector((obj.location[0] * (1 + self.zoomPercent), obj.location[1], obj.location[2]))
+            obj.location = pos
+        
         return {'RUNNING_MODAL'}
 
 
