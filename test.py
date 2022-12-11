@@ -1,5 +1,6 @@
 import bpy
 import mathutils
+import bl_math
 from math import radians
 from bpy_extras import view3d_utils
 
@@ -123,6 +124,9 @@ def CreateEmpty(position : mathutils.Vector):
     bpy.context.scene.collection.objects.link(emptyObject)
     # Change light position
     emptyObject.location = position
+    # Change Empty Display Scale
+    emptyObject.empty_display_size = 80.0
+    # Return empty 
     return emptyObject
 
 def CreateLight(position : mathutils.Vector):
@@ -149,6 +153,8 @@ class OBJECT_OT_add_light_and_empty(bpy.types.Operator):
     emptyObjName = ""
     lgtObjName = ""
     zoomPercent = 0.1
+    energyGrowthPercent = 0.25
+    sizeChangeSensitivity = 0.02
 
 
     @classmethod
@@ -190,7 +196,8 @@ class OBJECT_OT_add_light_and_empty(bpy.types.Operator):
 
         elif event.type == 'MOUSEMOVE' and event.alt:
             obj : bpy.types.PointLight = bpy.data.objects[self.lgtObjName].data
-            obj.shadow_soft_size *= 1 + ((event.mouse_region_x - event.mouse_prev_x )* 0.02)
+            obj.shadow_soft_size *= 1 + ((event.mouse_region_x - event.mouse_prev_x )* self.sizeChangeSensitivity)
+            obj.shadow_soft_size = bl_math.clamp(obj.shadow_soft_size, 0.001,10000000)
 
         elif event.type == 'MOUSEMOVE':
             x = radians(remap(event.mouse_region_y /context.area.height,0.0,1.0,90.0,-90.0))
@@ -198,17 +205,9 @@ class OBJECT_OT_add_light_and_empty(bpy.types.Operator):
             rot = mathutils.Vector((0.0, x, y))
             bpy.data.objects[self.emptyObjName].rotation_euler = rot
 
-        elif event.type == 'LEFTMOUSE':
-            print('finish modal')
-            return {'FINISHED'}
-
-        elif event.type in {'RIGHTMOUSE', 'ESC'}:
-            print('canceled modal')
-            return {'CANCELLED'}
-
         elif event.type == 'WHEELUPMOUSE' and event.shift:
             obj : bpy.types.PointLight = bpy.data.objects[self.lgtObjName].data
-            obj.energy *= 1.25
+            obj.energy *= bl_math.clamp(1.0 + self.energyGrowthPercent, 0.001,10000000)
 
         elif event.type == 'WHEELUPMOUSE':
             obj = bpy.data.objects[self.lgtObjName]
@@ -217,12 +216,20 @@ class OBJECT_OT_add_light_and_empty(bpy.types.Operator):
 
         elif event.type == 'WHEELDOWNMOUSE' and event.shift:
             obj : bpy.types.PointLight = bpy.data.objects[self.lgtObjName].data
-            obj.energy *= 0.75
+            obj.energy *= bl_math.clamp(1.0 - self.energyGrowthPercent, 0.001,10000000)
 
         elif event.type == 'WHEELDOWNMOUSE':
             obj = bpy.data.objects[self.lgtObjName]
             pos = mathutils.Vector((obj.location[0] * (1 + self.zoomPercent), obj.location[1], obj.location[2]))
             obj.location = pos
+
+        elif event.type == 'LEFTMOUSE':
+            print('finish modal')
+            return {'FINISHED'}
+
+        elif event.type in {'RIGHTMOUSE', 'ESC'}:
+            print('canceled modal')
+            return {'CANCELLED'}
         
         return {'RUNNING_MODAL'}
 
