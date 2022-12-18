@@ -2,6 +2,8 @@ import bpy
 import mathutils
 from math import radians
 from math import degrees
+from math import atan2
+from math import sqrt
 
 # Math
 def lerp(a: float, b: float, t: float) -> float:
@@ -12,6 +14,12 @@ def inv_lerp(a: float, b: float, v: float) -> float:
 
 def remap(v: float, i_min: float, i_max: float, o_min: float, o_max: float) -> float:
     return lerp(o_min, o_max, inv_lerp(i_min, i_max, v))
+
+
+def vector_to_azimuth_elevation(vector : mathutils.Vector) -> mathutils.Vector: 
+    azimuth = atan2(vector.y, vector.x)
+    elevation = atan2(vector.z, sqrt(vector.x**2 + vector.y**2))
+    return mathutils.Vector(( 0.0,-elevation,azimuth))
 
 class CreateObject(bpy.types.Operator):
     """Object with Property"""
@@ -65,7 +73,7 @@ class RotateAroundPoint(bpy.types.Operator):
         pivotObject.location = mathutils.Vector((pos[0],pos[1],pos[2]))
         bpy.context.scene.collection.objects.link(pivotObject)
         # unrotate empty 
-        pivotToEmpty = emptyObject.location - mathutils.Vector((pos[0],pos[1],pos[2]))
+        pivotToEmpty : mathutils.Vector  = emptyObject.location - mathutils.Vector((pos[0],pos[1],pos[2]))
         emptyObject.location = mathutils.Vector(( pivotToEmpty.magnitude,0,0)) 
         emptyObject.rotation_euler = (0,0,0)
         # set Parenting
@@ -73,14 +81,16 @@ class RotateAroundPoint(bpy.types.Operator):
         emptyObject.parent = pivotObject
         # rotate pivot
         rot = emptyObject["eulerRotation"]
-        pivotObject.rotation_euler = rot
+        print(f"rotation is {rot[0]},{rot[1]},{rot[2]}")
+        #v : mathutils.Vector = pivotToEmpty.normalized()
+        print(f"calculated rotation is {vector_to_azimuth_elevation(pivotToEmpty)}")
+        pivotObject.rotation_euler = vector_to_azimuth_elevation(pivotToEmpty)
     
         print("invoke done")
         context.window_manager.modal_handler_add(self)
         return {'RUNNING_MODAL'}
 
     def modal(self, context:  bpy.types.Context, event: bpy.types.Event):
-        print ("in modal")
 
         if event.type == 'LEFTMOUSE':
             print("finish")
@@ -109,8 +119,6 @@ class RotateAroundPoint(bpy.types.Operator):
             y = radians(remap(event.mouse_region_x /context.area.width,0.0,1.0,0.0,360.0))
             rot = mathutils.Vector((0.0, x, y))
             bpy.data.objects[self.pivotObjName].rotation_euler = rot
-
-        print (event.type)
             
         return {'RUNNING_MODAL'}
 
@@ -130,26 +138,3 @@ def unregister():
 if __name__ == '__main__':
     register()
 
-
-# bpy.context.object["MyOwnProperty"] = 42
-
-# if "SomeProp" in bpy.context.object:
-#     print("Property found")
-
-# # Use the get function like a Python dictionary
-# # which can have a fallback value.
-# value = bpy.data.scenes["Scene"].get("test_prop", "fallback value")
-
-# # dictionaries can be assigned as long as they only use basic types.
-# group = bpy.data.groups.new("MyTestGroup")
-# group["GameSettings"] = {"foo": 10, "bar": "spam", "baz": {}}
-
-# del group["GameSettings"]
-
-#
-#
-#
-# CALL AN OPERTATOR FROM AN OPERATOR
-#
-#
-#
