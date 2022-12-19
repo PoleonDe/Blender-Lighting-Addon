@@ -16,10 +16,16 @@ def remap(v: float, i_min: float, i_max: float, o_min: float, o_max: float) -> f
     return lerp(o_min, o_max, inv_lerp(i_min, i_max, v))
 
 
+# def vector_to_azimuth_elevation(vector : mathutils.Vector) -> mathutils.Vector: 
+#     azimuth = atan2(vector.y, vector.x)
+#     elevation = atan2(vector.z, sqrt(vector.x**2 + vector.y**2))
+#     return mathutils.Vector(( 0.0,-elevation,azimuth))
+
 def vector_to_azimuth_elevation(vector : mathutils.Vector) -> mathutils.Vector: 
-    azimuth = atan2(vector.y, vector.x)
-    elevation = atan2(vector.z, sqrt(vector.x**2 + vector.y**2))
-    return mathutils.Vector(( 0.0,-elevation,azimuth))
+    a = atan2(vector[0]/vector[1])
+    e = atan2(vector[2]/vector[1])
+    #print('azimuth = '+str(a)+', elevation = '+str(e))
+    return mathutils.Vector((0.0,e,a))
 
 class CreateObject(bpy.types.Operator):
     """Object with Property"""
@@ -32,7 +38,6 @@ class CreateObject(bpy.types.Operator):
         emptyObject = bpy.data.objects.new("emptyObject", None)
         # Custom Property
         emptyObject["pivotPoint"] = (1,0,0)
-        emptyObject["eulerRotation"] = (0,0,0)
         #set pos
         emptyObject.location = mathutils.Vector((3,0,0))
         # link empty to Scene
@@ -47,7 +52,8 @@ class RotateAroundPoint(bpy.types.Operator):
     bl_label = "Rotate Object around pivot"
     bl_options = {'REGISTER', 'UNDO'}
 
-
+    mouse_x_initial = 0.0
+    mouse_y_initial = 0.0
     pivotObjName = "pivotObject"
 
     @classmethod
@@ -58,33 +64,37 @@ class RotateAroundPoint(bpy.types.Operator):
         if bpy.context.active_object == None:
             return {'CANCELLED'}
 
-        if "pivotPoint" not in bpy.context.active_object and "eulerRotation" not in bpy.context.active_object:
+        if "pivotPoint" not in bpy.context.active_object:
             print("Property not found")
             return {'CANCELLED'}
 
         print("Property found")
 
-        emptyObject = bpy.context.active_object
+        lightObject = bpy.context.active_object
 
         # create Pivot
         pivotObject = bpy.data.objects.new(self.pivotObjName, None)
         pivotObject.empty_display_type = 'ARROWS'
-        pos = emptyObject["pivotPoint"]
-        pivotObject.location = mathutils.Vector((pos[0],pos[1],pos[2]))
+        pivotPos = lightObject["pivotPoint"]
+        pivotObject.location = mathutils.Vector((pivotPos[0],pivotPos[1],pivotPos[2]))
         bpy.context.scene.collection.objects.link(pivotObject)
         # unrotate empty 
-        pivotToEmpty : mathutils.Vector  = emptyObject.location - mathutils.Vector((pos[0],pos[1],pos[2]))
-        emptyObject.location = mathutils.Vector(( pivotToEmpty.magnitude,0,0)) 
-        emptyObject.rotation_euler = (0,0,0)
+        pivotToEmpty : mathutils.Vector  = lightObject.location - mathutils.Vector((pivotPos[0],pivotPos[1],pivotPos[2]))
+        lightObject.rotation_euler = (0,0,0)
+        lightObject.location = mathutils.Vector(( pivotToEmpty.magnitude,0,0)) 
         # set Parenting
-        emptyObject.parent_type = 'OBJECT'
-        emptyObject.parent = pivotObject
+        lightObject.parent_type = 'OBJECT'
+        lightObject.parent = pivotObject
         # rotate pivot
-        rot = emptyObject["eulerRotation"]
-        print(f"rotation is {rot[0]},{rot[1]},{rot[2]}")
+        print(f"rotation is {lightObject.rotation_euler[0]},{lightObject.rotation_euler[1]},{lightObject.rotation_euler[2]}")
+        rot = vector_to_azimuth_elevation(pivotToEmpty)
         #v : mathutils.Vector = pivotToEmpty.normalized()
         print(f"calculated rotation is {vector_to_azimuth_elevation(pivotToEmpty)}")
-        pivotObject.rotation_euler = vector_to_azimuth_elevation(pivotToEmpty)
+        pivotObject.rotation_euler = rot
+
+        #set mouse initial offset
+        self.mouse_x_initial = event.mouse_region_x
+        self.mouse_y_initial = event.mouse_region_y
     
         print("invoke done")
         context.window_manager.modal_handler_add(self)
@@ -97,7 +107,6 @@ class RotateAroundPoint(bpy.types.Operator):
             # save rotation
             ob = bpy.data.objects["emptyObject"]
             rot = bpy.data.objects[self.pivotObjName].rotation_euler
-            ob["eulerRotation"] = rot
 
             # Unparent
             world_loc = ob.matrix_world.to_translation()
@@ -113,10 +122,10 @@ class RotateAroundPoint(bpy.types.Operator):
         elif event.type == 'MIDDLEMOUSE':
             return {'PASS_THROUGH'}
 
-        elif event.type == 'MOUSEMOVE' and event.shift:
+        elif event.type == 'MOUSEMOVE' and not event.shift:
             print("move")
-            x = radians(remap(event.mouse_region_y /context.area.height,0.0,1.0,90.0,-90.0))
-            y = radians(remap(event.mouse_region_x /context.area.width,0.0,1.0,0.0,360.0))
+            x = radians(remap((event.mouse_region_y) /context.area.height,0.0,1.0,90.0,-90.0)) #  - self.mouse_x_initial
+            y = radians(remap((event.mouse_region_x) /context.area.width,0.0,1.0,0.0,360.0))
             rot = mathutils.Vector((0.0, x, y))
             bpy.data.objects[self.pivotObjName].rotation_euler = rot
             
