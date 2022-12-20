@@ -10,9 +10,14 @@ from math import sin
 from math import cos
 from bpy_extras import view3d_utils
 
+# TODO - Add bl_info, so that this is an addon.
+
+#################################################################
+######################## FUNCTIONS ##############################
+#################################################################
+
+
 # Wrap Cursor when its at first or last pixel of window
-
-
 def wrapMouseInWindow(context: bpy.types.Context, event: bpy.types.Event):
     width = context.area.width
     height = context.area.height
@@ -73,9 +78,8 @@ def vector_to_azimuth_elevation(vec: mathutils.Vector) -> mathutils.Vector:
     # return
     return mathutils.Vector((0.0, elevation, azimuth))
 
+
 # Raycast
-
-
 def raycast(context: bpy.types.Context, event: bpy.types.Event):
     """Run this function on left mouse, execute the ray cast"""
     # get the context arguments
@@ -145,3 +149,141 @@ def raycast(context: bpy.types.Context, event: bpy.types.Event):
         return hit_world, normal, best_original
     else:
         return None, None, None
+
+
+# Object Creation
+def CreateLight(position: mathutils.Vector, lightType: str):
+    """Creates a Light at position, Light types are POINT, SUN, SPOT, AREA"""
+    # Create light datablock
+    lightData = bpy.data.lights.new(
+        name=lightType + "LightData", type=lightType)
+    lightData.energy = 100
+    # Create new object, pass the light data
+    lightObject = bpy.data.objects.new(
+        name=lightType + "Light", object_data=lightData)
+    # Custom Property
+    lightObject["pivotPoint"] = (0, 0, 0)
+    # set pos
+    lightObject.location = position
+    # link empty to Scene
+    bpy.context.scene.collection.objects.link(lightObject)
+
+#################################################################
+######################## OPERATORS ##############################
+#################################################################
+
+
+class LIGHTCONTROL_OT_add_area_Light(bpy.types.Operator):
+    bl_idname = "lightcontrol.add_area_light"
+    bl_label = "Adds an Area Light"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    # TODO - add raycast creation and position based on normal, and start modal Positioning
+
+    def invoke(self, context: bpy.types.Context, event: bpy.types.Event):
+        CreateLight(mathutils.Vector((0.0, 0.0, 0.0)), 'AREA')
+        print("invoke Adjust Light no Params")
+        if bpy.ops.lightcontrol.adjust_light.poll:
+            bpy.ops.lightcontrol.adjust_light()
+        return {'FINISHED'}
+
+
+class LIGHTCONTROL_OT_add_point_light(bpy.types.Operator):
+    bl_idname = "lightcontrol.add_point_light"
+    bl_label = "Add Point Light"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    # TODO - add raycast creation and position based on normal, and start modal Positioning
+
+    def invoke(self, context: bpy.types.Context, event: bpy.types.Event):
+        CreateLight(mathutils.Vector((0.0, 0.0, 0.0)), 'POINT')
+        return {'FINISHED'}
+
+
+class LIGHTCONTROL_OT_add_directional_light(bpy.types.Operator):
+    bl_idname = "lightcontrol.add_directional_light"
+    bl_label = "Add Directional Light"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    # TODO - add raycast creation and position based on normal, and start modal Positioning
+
+    def invoke(self, context: bpy.types.Context, event: bpy.types.Event):
+        CreateLight(mathutils.Vector((0.0, 0.0, 0.0)), 'SUN')
+        return {'FINISHED'}
+
+
+class LIGHTCONTROL_OT_add_spot_light(bpy.types.Operator):
+    bl_idname = "lightcontrol.add_spot_light"
+    bl_label = "Add Spot Light"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    # TODO - add raycast creation and position based on normal, and start modal Positioning
+
+    def invoke(self, context: bpy.types.Context, event: bpy.types.Event):
+        CreateLight(mathutils.Vector((0.0, 0.0, 0.0)), 'SPOT')
+        return {'FINISHED'}
+
+
+class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
+    """Takes control of Blender and Lets you adjust the Light"""
+    bl_idname = "lightcontrol.adjust_light"
+    bl_label = "Adjust Light"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        # true when in 3D View and Active Object is Light.
+        if context.active_object == None:
+            print("there is no active Object")
+            return False
+        return context.area.type == 'VIEW_3D' and context.active_object.type == 'LIGHT'
+
+    def execute(self, context: bpy.types.Context):
+        print("Invoked Adjust Light - called through execute")
+        return {'FINISHED'}
+
+    def invoke(self, context: bpy.types.Context, event: bpy.types.Event):
+        print("Invoked Adjust Light - called through invoke")
+        return {'FINISHED'}
+
+
+#################################################################
+####################### REGISTRATION ############################
+#################################################################
+addon_keymaps = []
+classes = (LIGHTCONTROL_OT_add_area_Light, LIGHTCONTROL_OT_add_point_light,
+           LIGHTCONTROL_OT_add_directional_light, LIGHTCONTROL_OT_add_spot_light, LIGHTCONTROL_OT_adjust_light)
+
+
+def register():
+    for cls in classes:
+        bpy.utils.register_class(cls)
+
+    wm = bpy.context.window_manager
+    kc = wm.keyconfigs.addon
+    if kc:
+        km = kc.keymaps.new(name='3D View', space_type='VIEW_3D')
+        kmi = km.keymap_items.new(
+            "lightcontrol.add_area_light", type='ONE', value='PRESS', shift=True, ctrl=True)
+        kmi = km.keymap_items.new(
+            "lightcontrol.add_point_light", type='TWO', value='PRESS', shift=True, ctrl=True)
+        kmi = km.keymap_items.new(
+            "lightcontrol.add_directional_light", type='THREE', value='PRESS', shift=True, ctrl=True)
+        kmi = km.keymap_items.new(
+            "lightcontrol.add_spot_light", type='FOUR', value='PRESS', shift=True, ctrl=True)
+        addon_keymaps.append((km, kmi))
+
+
+def unregister():
+    print("unregistered")
+    for cls in classes:
+        bpy.utils.unregister_class(cls)
+
+    for km, kmi in addon_keymaps:
+        km.keymap_items.remove(kmi)
+    addon_keymaps.clear()
+
+
+# TestRunning
+if __name__ == '__main__':
+    register()
