@@ -343,6 +343,34 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
                 self.pivotObject.rotation_euler = lookAtRotation(normal)
                 print('mousemove')
 
+        elif event.type == 'MOUSEMOVE' and event.alt:
+            print("mousemoveAndAlt")
+            multiplicationFactor = 1.0 + \
+                ((event.mouse_region_x - event.mouse_prev_x)
+                 * self.sizeChangeSensitivity)
+
+            lightObjectData: bpy.types.Light = lightObject.data
+
+            if lightObjectData.type == 'AREA':
+                areaLightObjectData: bpy.types.AreaLight = lightObject.data
+                areaLightObjectData.size = bl_math.clamp(
+                    areaLightObjectData.size * multiplicationFactor, 0.001, 10000000)
+                #
+            elif lightObjectData.type == 'POINT':
+                pointLightObjectData: bpy.types.PointLight = lightObject.data
+                pointLightObjectData.shadow_soft_size = bl_math.clamp(
+                    pointLightObjectData.shadow_soft_size * multiplicationFactor, 0.001, 10000000)
+                #
+            elif lightObjectData.type == 'SPOT':
+                spotLightObjectData: bpy.types.SpotLight = lightObject.data
+                spotLightObjectData.shadow_soft_size = bl_math.clamp(
+                    spotLightObjectData.shadow_soft_size * multiplicationFactor, 0.001, 10000000)
+                #
+            elif lightObjectData.type == 'SUN':
+                sunLightObjectData: bpy.types.SunLight = lightObject.data
+                sunLightObjectData.angle = bl_math.clamp(
+                    sunLightObjectData.angle * multiplicationFactor, 0.001, 180)
+
         elif event.type == 'MOUSEMOVE':
             xDelta = (event.mouse_x - event.mouse_prev_x) * \
                 self.rotationSpeed
@@ -352,45 +380,41 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
             self.pivotObject.rotation_euler = mathutils.Euler((self.pivotObject.rotation_euler.x, clamp(
                 self.pivotObject.rotation_euler.y - yDelta, -pi/2.0, pi/2.0), self.pivotObject.rotation_euler.z + xDelta))
 
-        # TODO : Add all Light Size Options
-        # elif event.type == 'MOUSEMOVE' and event.alt:
-        #     lightObjectData: bpy.types.PointLight = lightObject.data
-        #     #
-        #     lightObjectData.shadow_soft_size *= 1 + \
-        #         ((event.mouse_region_x - event.mouse_prev_x)
-        #          * self.sizeChangeSensitivity)
-        #     #clamp size
-        #     lightObjectData.shadow_soft_size = bl_math.clamp(
-        #         lightObjectData.shadow_soft_size, 0.001, 10000000)
+        elif (event.type == 'WHEELUPMOUSE' or event.type == 'WHEELDOWNMOUSE') and event.shift:
+            step: float = 0.0
+            if event.type == 'WHEELUPMOUSE':
+                step = 1.0
+            else:
+                step = -1.0
 
-        # TODO : Make Rotation based on Delta
-        # elif event.type == 'MOUSEMOVE':
-        #     x = radians(remap(event.mouse_region_y /
-        #                 context.area.height, 0.0, 1.0, 90.0, -90.0))
-        #     y = radians(remap(event.mouse_region_x /
-        #                 context.area.width, 0.0, 1.0, 0.0, 360.0))
-        #     rot = mathutils.Vector((0.0, x, y))
-        #     pivotObject.rotation_euler = rot
+            lightObjectData: bpy.types.Light = lightObject.data
 
-        # TODO : Add All Light Options Energy
-        # elif event.type == 'WHEELUPMOUSE' and event.shift:
-        #     obj: bpy.types.PointLight = bpy.data.objects[self.lgtObjName].data
-        #     obj.energy *= bl_math.clamp(1.0 +
-        #                                 self.energyGrowthPercent, 0.001, 10000000)
+            if lightObjectData.type == 'AREA':
+                areaLightObjectData: bpy.types.AreaLight = lightObject.data
+                areaLightObjectData.energy = bl_math.clamp(
+                    areaLightObjectData.energy * (1.0 - (step * self.energyGrowthPercent)), 0.001, 10000000)
+            elif lightObjectData.type == 'POINT':
+                pointLightObjectData: bpy.types.PointLight = lightObject.data
+                pointLightObjectData.energy = bl_math.clamp(
+                    pointLightObjectData.energy * (1.0 - (step * self.energyGrowthPercent)), 0.001, 10000000)
+            elif lightObjectData.type == 'SPOT':
+                spotLightObjectData: bpy.types.SpotLight = lightObject.data
+                spotLightObjectData.energy = bl_math.clamp(
+                    spotLightObjectData.energy * (1.0 - (step * self.energyGrowthPercent)), 0.001, 10000000)
+            elif lightObjectData.type == 'SUN':
+                sunLightObjectData: bpy.types.SunLight = lightObject.data
+                sunLightObjectData.energy = bl_math.clamp(
+                    sunLightObjectData.energy * (1.0 - (step * self.energyGrowthPercent)), 0.001, 10000000)
 
-        # elif event.type == 'WHEELDOWNMOUSE' and event.shift:
-        #     lightObjectData: bpy.types.PointLight = bpy.data.objects[self.lgtObjName].data
-        #     obj.energy *= bl_math.clamp(1.0 -
-        #                                 self.energyGrowthPercent, 0.001, 10000000)
+        elif event.type == 'WHEELUPMOUSE' or event.type == 'WHEELDOWNMOUSE':
+            step: float = 0.0
+            if event.type == 'WHEELUPMOUSE':
+                step = 1.0
+            else:
+                step = -1.0
 
-        elif event.type == 'WHEELUPMOUSE':
             pos = mathutils.Vector(
-                (lightObject.location[0] * (1 - self.zoomSpeedPercent), lightObject.location[1], lightObject.location[2]))
-            lightObject.location = pos
-
-        elif event.type == 'WHEELDOWNMOUSE':
-            pos = mathutils.Vector(
-                (lightObject.location[0] * (1 + self.zoomSpeedPercent), lightObject.location[1], lightObject.location[2]))
+                (lightObject.location[0] * (1 + (step * self.zoomSpeedPercent)), lightObject.location[1], lightObject.location[2]))
             lightObject.location = pos
 
         elif event.type == 'LEFTMOUSE':
