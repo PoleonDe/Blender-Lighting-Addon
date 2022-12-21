@@ -64,6 +64,8 @@ def sign(v: float) -> float:
         return 1.0
     return -1.0
 
+# TODO : Rotations fail when not XYZ Rotation Order.
+
 
 def vector_to_azimuth_elevation(vec: mathutils.Vector) -> mathutils.Vector:
     # azimuth
@@ -78,8 +80,31 @@ def vector_to_azimuth_elevation(vec: mathutils.Vector) -> mathutils.Vector:
     # return
     return mathutils.Vector((0.0, elevation, azimuth))
 
+# TODO : Rotations fail when not XYZ Rotation Order.
+
+
+def lookAtRotation(vec: mathutils.Vector, facingAxis="") -> mathutils.Vector:
+    """ specify look at facing Axis by string x,y,z or -x,-y,-z"""
+    azimuthElevation = vector_to_azimuth_elevation(vec)
+    if facingAxis == "x":
+        return mathutils.Vector((0.0, azimuthElevation.y + pi, azimuthElevation.z))
+    elif facingAxis == "y":
+        return mathutils.Vector((pi * 0.5, azimuthElevation.y - pi * 0.5, azimuthElevation.z))
+    elif facingAxis == "z":
+        return mathutils.Vector((0.0, azimuthElevation.y - pi * 0.5, azimuthElevation.z))
+    elif facingAxis == "-x":
+        return mathutils.Vector((0.0, azimuthElevation.y, azimuthElevation.z))
+    elif facingAxis == "-y":
+        return mathutils.Vector((pi * 0.5, azimuthElevation.y + pi * 0.5, azimuthElevation.z))
+    elif facingAxis == "-z":
+        return mathutils.Vector((0.0, azimuthElevation.y + pi * 0.5, azimuthElevation.z))
+    else:
+        return azimuthElevation
+
 
 # Raycast
+
+
 def raycast(context: bpy.types.Context, event: bpy.types.Event):
     """Run this function on left mouse, execute the ray cast"""
     # get the context arguments
@@ -154,8 +179,10 @@ def raycast(context: bpy.types.Context, event: bpy.types.Event):
 
 
 # Object Creation
-def CreateLight(pivotPosition: mathutils.Vector, normal: mathutils.Vector, lightDistance: float, lightType: str):
+def CreateLight(context: bpy.types.Context, pivotPosition: mathutils.Vector, normal: mathutils.Vector, lightDistance: float, lightType: str) -> bpy.types.Object:
     """Creates a Light at position, Light types are POINT, SUN, SPOT, AREA"""
+    # TODO : Split this Method in multiple Methods. all with single Responseability
+    # TODO : change lightDistance based on Camera Distance to Object
     # Create light datablock
     lightData = bpy.data.lights.new(
         name=lightType + "LightData", type=lightType)
@@ -170,12 +197,12 @@ def CreateLight(pivotPosition: mathutils.Vector, normal: mathutils.Vector, light
     print(normal)
     lightObject.location = pivotPosition + \
         (normal * mathutils.Vector((lightDistance, lightDistance, lightDistance)))
-    # lightObject.rotation_euler = vector_to_azimuth_elevation(-normal)
-
+    # set rotation
+    lightObject.rotation_euler = lookAtRotation(normal, "-z")
     # link empty to Scene
-    bpy.context.scene.collection.objects.link(lightObject)
+    context.scene.collection.objects.link(lightObject)
 
-    # TODO : set as active Object
+    return lightObject
 
 #################################################################
 ######################## OPERATORS ##############################
@@ -196,8 +223,14 @@ class LIGHTCONTROL_OT_add_area_Light(bpy.types.Operator):
             print("hit nothing, canceled")
             return {'CANCELLED'}
 
-        CreateLight(mathutils.Vector((hit[0], hit[1], hit[2])), mathutils.Vector(
+        # Create light
+        lightObject = CreateLight(context, mathutils.Vector((hit[0], hit[1], hit[2])), mathutils.Vector(
             (normal[0], normal[1], normal[2])), 3.0, 'AREA')
+
+        # Set as active Object
+        context.view_layer.objects.active = lightObject
+
+        # Create Adjust Light
         print("invoke Adjust Light no Params")
         if bpy.ops.lightcontrol.adjust_light.poll():
             bpy.ops.lightcontrol.adjust_light('INVOKE_DEFAULT')
@@ -218,7 +251,7 @@ class LIGHTCONTROL_OT_add_point_light(bpy.types.Operator):
             print("hit nothing, canceled")
             return {'CANCELLED'}
 
-        CreateLight(mathutils.Vector((hit[0], hit[1], hit[2])), mathutils.Vector(
+        CreateLight(context, mathutils.Vector((hit[0], hit[1], hit[2])), mathutils.Vector(
             (normal[0], normal[1], normal[2])), 3.0, 'POINT')
 
         return {'FINISHED'}
@@ -237,7 +270,7 @@ class LIGHTCONTROL_OT_add_directional_light(bpy.types.Operator):
             print("hit nothing, canceled")
             return {'CANCELLED'}
 
-        CreateLight(mathutils.Vector((hit[0], hit[1], hit[2])), mathutils.Vector(
+        CreateLight(context, mathutils.Vector((hit[0], hit[1], hit[2])), mathutils.Vector(
             (normal[0], normal[1], normal[2])), 3.0, 'SUN')
 
         return {'FINISHED'}
@@ -256,7 +289,7 @@ class LIGHTCONTROL_OT_add_spot_light(bpy.types.Operator):
             print("hit nothing, canceled")
             return {'CANCELLED'}
 
-        CreateLight(mathutils.Vector((hit[0], hit[1], hit[2])), mathutils.Vector(
+        CreateLight(context, mathutils.Vector((hit[0], hit[1], hit[2])), mathutils.Vector(
             (normal[0], normal[1], normal[2])), 3.0, 'SPOT')
         return {'FINISHED'}
 
@@ -298,16 +331,16 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
         bpy.context.scene.collection.objects.link(pivotObject)
         # unrotate and place light
         pivotToLight: mathutils.Vector = lightObject.location - pivotObject.location
-        lightObject.rotation_euler = (0, 0, 0)
+        lightObject.rotation_euler = (0, pi*0.5, 0)  # make -Z look forward
         lightObject.location = mathutils.Vector((pivotToLight.magnitude, 0, 0))
         # set parenting of light and pivot
         lightObject.parent_type = 'OBJECT'
         lightObject.parent = pivotObject
         # rotate pivot
-        rot = vector_to_azimuth_elevation(pivotToLight)
+        rot = lookAtRotation(pivotToLight, "-x")
         pivotObject.rotation_euler = rot
 
-        return {'FINSIHED'}
+        return {'FINISHED'}
         context.window_manager.modal_handler_add(self)
         return {'RUNNING_MODAL'}
 
