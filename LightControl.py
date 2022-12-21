@@ -510,8 +510,3 @@ def unregister():
     for km, kmi in addon_keymaps:
         km.keymap_items.remove(kmi)
     addon_keymaps.clear()
-
-
-# TestRunning
-if __name__ == '__main__':
-    register()
