@@ -1,16 +1,24 @@
-import bpy
-import mathutils
-import bl_math
-from math import radians
-from math import degrees
-from math import atan2
-from math import sqrt
-from math import pi
-from math import sin
-from math import cos
 from bpy_extras import view3d_utils
+from math import cos
+from math import sin
+from math import pi
+from math import sqrt
+from math import atan2
+from math import degrees
+from math import radians
+import bl_math
+import mathutils
+import bpy
 
-# TODO - Add bl_info, so that this is an addon.
+bl_info = {
+    "name": "Light Control",
+    "description": "Tools that lets you easily create and adjust lights",
+    "author": "Malte Decker",
+    "version": (0, 1, 0),
+    "blender": (3, 3, 0),
+    "location": "Shortcuts : CTRL + SHIFT + 1/2/3/4/Q",
+}
+
 
 #################################################################
 ######################## FUNCTIONS ##############################
@@ -181,8 +189,9 @@ def raycast(context: bpy.types.Context, event: bpy.types.Event):
 # Object Creation
 def CreateLight(context: bpy.types.Context, pivotPosition: mathutils.Vector, lightType: str) -> bpy.types.Object:
     """Creates a Light at position, Light types are POINT, SUN, SPOT, AREA"""
-    # TODO : Split this Method in multiple Methods. all with single Responseability
     # TODO : change lightDistance based on Camera Distance to Object
+    # TODO : Create an Area Light always as a Rectangle
+    # TODO : Change the initial Brightness of the sun to 3
     # Create light datablock
     lightData = bpy.data.lights.new(
         name=lightType + "LightData", type=lightType)
@@ -274,9 +283,10 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
     pivotObject: bpy.types.Object = None
     # settings for modal
     zoomSpeedPercent = 0.1
-    rotationSpeed = 0.01
+    rotationSpeed = 0.006
     energyGrowthPercent = 0.25
     sizeChangeSensitivity = 0.02
+    slowChangeSpeedPercent = 0.2
     pauseExecution: bool = False
 
     @ classmethod
@@ -329,26 +339,29 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
         if event.type == 'SPACE':
             self.pauseExecution = event.value == 'PRESS'
             print(f"pressed space , should pause {self.pauseExecution}")
-
         if self.pauseExecution:
             return {'RUNNING_MODAL'}
-        # Set Light Adjustments
+
+        # Pass through Navigation
         if event.type == 'MIDDLEMOUSE':  # allow view navigation
             return {'PASS_THROUGH'}
-
-        elif event.type == 'MOUSEMOVE' and event.shift:
+        # Change Light Pivot Pos
+        elif event.type == 'MOUSEMOVE' and event.ctrl:
             hit, normal, best_original = raycast(context, event)
             if hit:
                 self.pivotObject.location = hit
+                # TODO : Implement Special case, normal is 0,0,1
                 self.pivotObject.rotation_euler = lookAtRotation(normal)
                 print('mousemove')
-
+        # Change Light Size
         elif event.type == 'MOUSEMOVE' and event.alt:
-            print("mousemoveAndAlt")
-            multiplicationFactor = 1.0 + \
-                ((event.mouse_region_x - event.mouse_prev_x)
-                 * self.sizeChangeSensitivity)
-
+            # Multiplication Factor
+            delta = event.mouse_region_x - event.mouse_prev_x
+            changeRate = delta * self.sizeChangeSensitivity
+            if event.shift:
+                changeRate *= self.slowChangeSpeedPercent
+            multiplicationFactor = 1.0 + changeRate
+            # Setting Size
             lightObjectData: bpy.types.Light = lightObject.data
 
             if lightObjectData.type == 'AREA':
@@ -370,22 +383,28 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
                 sunLightObjectData: bpy.types.SunLight = lightObject.data
                 sunLightObjectData.angle = bl_math.clamp(
                     sunLightObjectData.angle * multiplicationFactor, 0.001, 180)
-
+        # Rotate Light
         elif event.type == 'MOUSEMOVE':
-            xDelta = (event.mouse_x - event.mouse_prev_x) * \
-                self.rotationSpeed
-            yDelta = (event.mouse_y - event.mouse_prev_y) * \
-                self.rotationSpeed
+            delta: mathutils.Vector = mathutils.Vector((
+                event.mouse_x - event.mouse_prev_x, event.mouse_y - event.mouse_prev_y, 0.0))
+            delta *= self.rotationSpeed
+            if event.shift:
+                delta *= self.slowChangeSpeedPercent
+            xMultiplicator = delta.x
+            yMultiplicator = delta.y
             # add delta rotation to existing rotation and clamp it
             self.pivotObject.rotation_euler = mathutils.Euler((self.pivotObject.rotation_euler.x, clamp(
-                self.pivotObject.rotation_euler.y - yDelta, -pi/2.0, pi/2.0), self.pivotObject.rotation_euler.z + xDelta))
-
-        elif (event.type == 'WHEELUPMOUSE' or event.type == 'WHEELDOWNMOUSE') and event.shift:
+                self.pivotObject.rotation_euler.y - yMultiplicator, -pi/2.0, pi/2.0), self.pivotObject.rotation_euler.z + xMultiplicator))
+        # Change Light Energy
+        elif (event.type == 'WHEELUPMOUSE' or event.type == 'WHEELDOWNMOUSE') and event.alt:
             step: float = 0.0
             if event.type == 'WHEELUPMOUSE':
                 step = 1.0
             else:
                 step = -1.0
+
+            if event.shift:
+                step *= self.slowChangeSpeedPercent
 
             lightObjectData: bpy.types.Light = lightObject.data
 
@@ -405,7 +424,7 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
                 sunLightObjectData: bpy.types.SunLight = lightObject.data
                 sunLightObjectData.energy = bl_math.clamp(
                     sunLightObjectData.energy * (1.0 - (step * self.energyGrowthPercent)), 0.001, 10000000)
-
+        # Change Light Distance
         elif event.type == 'WHEELUPMOUSE' or event.type == 'WHEELDOWNMOUSE':
             step: float = 0.0
             if event.type == 'WHEELUPMOUSE':
@@ -413,10 +432,13 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
             else:
                 step = -1.0
 
+            if event.shift:
+                step *= self.slowChangeSpeedPercent
+
             pos = mathutils.Vector(
                 (lightObject.location[0] * (1 + (step * self.zoomSpeedPercent)), lightObject.location[1], lightObject.location[2]))
             lightObject.location = pos
-
+        # Finish Modal
         elif event.type == 'LEFTMOUSE':
             # save rotation
             rot = self.pivotObject.rotation_euler
@@ -434,11 +456,15 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
 
             print('finished adjusting Light')
             return {'FINISHED'}
-
+        # Cancel Modal
         elif event.type in {'RIGHTMOUSE', 'ESC'}:
             print('canceled adjusting Light')
             return {'CANCELLED'}
 
+        # TODO : Change Pivot Point Size depending on Distance to Pivot
+        # TODO : Give User the option to Single The Light Source
+        # TODO : Give User the option to have Light Groups
+        # TODO : Give User the option to cycle Light Groups
         return {'RUNNING_MODAL'}
 
 
