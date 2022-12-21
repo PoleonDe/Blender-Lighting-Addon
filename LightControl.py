@@ -209,12 +209,16 @@ def CreateLight(context: bpy.types.Context, pivotPosition: mathutils.Vector, nor
 #################################################################
 
 
-class LIGHTCONTROL_OT_add_area_Light(bpy.types.Operator):
-    bl_idname = "lightcontrol.add_area_light"
+class LIGHTCONTROL_OT_add_light(bpy.types.Operator):
+    bl_idname = "lightcontrol.add_light"
     bl_label = "Adds an Area Light"
     bl_options = {'REGISTER', 'UNDO'}
 
     # TODO - and start modal Positioning
+
+    lightType: bpy.props.EnumProperty(items=[('AREA', 'Area Light', ''), ('POINT', 'Point Light', ''), ('SPOT', 'Spot Light', ''), (
+        'SUN', 'Directional Light', '')], name="Light Types", description="Which Light Type should be spawned", default='AREA')
+    # lightType = 'AREA'
 
     def invoke(self, context: bpy.types.Context, event: bpy.types.Event):
         hit, normal, best_original = raycast(context, event)
@@ -223,9 +227,24 @@ class LIGHTCONTROL_OT_add_area_Light(bpy.types.Operator):
             print("hit nothing, canceled")
             return {'CANCELLED'}
 
+        lightDistance: float = 3.0
+
         # Create light
-        lightObject = CreateLight(context, mathutils.Vector((hit[0], hit[1], hit[2])), mathutils.Vector(
-            (normal[0], normal[1], normal[2])), 3.0, 'AREA')
+        if self.lightType == 'AREA':
+            lightObject = CreateLight(context, mathutils.Vector(
+                (hit[0], hit[1], hit[2])), mathutils.Vector((normal[0], normal[1], normal[2])), lightDistance, 'AREA')
+        elif self.lightType == 'POINT':
+            lightObject = CreateLight(context, mathutils.Vector(
+                (hit[0], hit[1], hit[2])), mathutils.Vector((normal[0], normal[1], normal[2])), lightDistance, 'POINT')
+        elif self.lightType == 'SPOT':
+            lightObject = CreateLight(context, mathutils.Vector(
+                (hit[0], hit[1], hit[2])), mathutils.Vector((normal[0], normal[1], normal[2])), lightDistance, 'SPOT')
+        elif self.lightType == 'SUN':
+            lightObject = CreateLight(context, mathutils.Vector(
+                (hit[0], hit[1], hit[2])), mathutils.Vector((normal[0], normal[1], normal[2])), lightDistance, 'SUN')
+        else:
+            print("Couldnt add this lighttype.")
+            return {'CANCELLED'}
 
         # Set as active Object
         context.view_layer.objects.active = lightObject
@@ -237,69 +256,13 @@ class LIGHTCONTROL_OT_add_area_Light(bpy.types.Operator):
         return {'FINISHED'}
 
 
-class LIGHTCONTROL_OT_add_point_light(bpy.types.Operator):
-    bl_idname = "lightcontrol.add_point_light"
-    bl_label = "Add Point Light"
-    bl_options = {'REGISTER', 'UNDO'}
-
-    # TODO - add raycast creation and position based on normal, and start modal Positioning
-
-    def invoke(self, context: bpy.types.Context, event: bpy.types.Event):
-        hit, normal, best_original = raycast(context, event)
-        # print(f'hit point is {hit} normal is  {normal}, best Original Object is {best_original}')
-        if not hit:
-            print("hit nothing, canceled")
-            return {'CANCELLED'}
-
-        CreateLight(context, mathutils.Vector((hit[0], hit[1], hit[2])), mathutils.Vector(
-            (normal[0], normal[1], normal[2])), 3.0, 'POINT')
-
-        return {'FINISHED'}
-
-
-class LIGHTCONTROL_OT_add_directional_light(bpy.types.Operator):
-    bl_idname = "lightcontrol.add_directional_light"
-    bl_label = "Add Directional Light"
-    bl_options = {'REGISTER', 'UNDO'}
-
-    # TODO - add raycast creation and position based on normal, and start modal Positioning
-
-    def invoke(self, context: bpy.types.Context, event: bpy.types.Event):
-        hit, normal, best_original = raycast(context, event)
-        if not hit:
-            print("hit nothing, canceled")
-            return {'CANCELLED'}
-
-        CreateLight(context, mathutils.Vector((hit[0], hit[1], hit[2])), mathutils.Vector(
-            (normal[0], normal[1], normal[2])), 3.0, 'SUN')
-
-        return {'FINISHED'}
-
-
-class LIGHTCONTROL_OT_add_spot_light(bpy.types.Operator):
-    bl_idname = "lightcontrol.add_spot_light"
-    bl_label = "Add Spot Light"
-    bl_options = {'REGISTER', 'UNDO'}
-
-    # TODO - add raycast creation and position based on normal, and start modal Positioning
-
-    def invoke(self, context: bpy.types.Context, event: bpy.types.Event):
-        hit, normal, best_original = raycast(context, event)
-        if not hit:
-            print("hit nothing, canceled")
-            return {'CANCELLED'}
-
-        CreateLight(context, mathutils.Vector((hit[0], hit[1], hit[2])), mathutils.Vector(
-            (normal[0], normal[1], normal[2])), 3.0, 'SPOT')
-        return {'FINISHED'}
-
-
 class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
     """Takes control of Blender and Lets you adjust the Light"""
     bl_idname = "lightcontrol.adjust_light"
     bl_label = "Adjust Light"
     bl_options = {'REGISTER', 'UNDO'}
 
+    # temporary storeage of pivotObjectID
     pivotObjectID: bpy.types.ID = None
 
     @ classmethod
@@ -349,8 +312,7 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
 ####################### REGISTRATION ############################
 #################################################################
 addon_keymaps = []
-classes = (LIGHTCONTROL_OT_add_area_Light, LIGHTCONTROL_OT_add_point_light,
-           LIGHTCONTROL_OT_add_directional_light, LIGHTCONTROL_OT_add_spot_light, LIGHTCONTROL_OT_adjust_light)
+classes = (LIGHTCONTROL_OT_add_light, LIGHTCONTROL_OT_adjust_light)
 
 
 def register():
@@ -360,15 +322,21 @@ def register():
     wm = bpy.context.window_manager
     kc = wm.keyconfigs.addon
     if kc:
+        # spawn lights
         km = kc.keymaps.new(name='3D View', space_type='VIEW_3D')
         kmi = km.keymap_items.new(
-            "lightcontrol.add_area_light", type='ONE', value='PRESS', shift=True, ctrl=True)
+            "lightcontrol.add_light", type='ONE', value='PRESS', shift=True, ctrl=True)
+        kmi.properties.lightType = 'AREA'
         kmi = km.keymap_items.new(
-            "lightcontrol.add_point_light", type='TWO', value='PRESS', shift=True, ctrl=True)
+            "lightcontrol.add_light", type='TWO', value='PRESS', shift=True, ctrl=True)
+        kmi.properties.lightType = 'POINT'
         kmi = km.keymap_items.new(
-            "lightcontrol.add_directional_light", type='THREE', value='PRESS', shift=True, ctrl=True)
+            "lightcontrol.add_light", type='THREE', value='PRESS', shift=True, ctrl=True)
+        kmi.properties.lightType = 'SPOT'
         kmi = km.keymap_items.new(
-            "lightcontrol.add_spot_light", type='FOUR', value='PRESS', shift=True, ctrl=True)
+            "lightcontrol.add_light", type='FOUR', value='PRESS', shift=True, ctrl=True)
+        kmi.properties.lightType = 'DIRECTIONAL'
+        # adjust lights
         kmi = km.keymap_items.new(
             "lightcontrol.adjust_light", type='Q', value='PRESS', shift=True, ctrl=True)
         addon_keymaps.append((km, kmi))
