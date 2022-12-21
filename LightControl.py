@@ -179,7 +179,7 @@ def raycast(context: bpy.types.Context, event: bpy.types.Event):
 
 
 # Object Creation
-def CreateLight(context: bpy.types.Context, pivotPosition: mathutils.Vector, normal: mathutils.Vector, lightDistance: float, lightType: str) -> bpy.types.Object:
+def CreateLight(context: bpy.types.Context, pivotPosition: mathutils.Vector, lightType: str) -> bpy.types.Object:
     """Creates a Light at position, Light types are POINT, SUN, SPOT, AREA"""
     # TODO : Split this Method in multiple Methods. all with single Responseability
     # TODO : change lightDistance based on Camera Distance to Object
@@ -193,16 +193,25 @@ def CreateLight(context: bpy.types.Context, pivotPosition: mathutils.Vector, nor
     # Custom Property
     lightObject["pivotPoint"] = (
         pivotPosition.x, pivotPosition.y, pivotPosition.z)
-    # set pos
-    print(normal)
-    lightObject.location = pivotPosition + \
-        (normal * mathutils.Vector((lightDistance, lightDistance, lightDistance)))
-    # set rotation
-    lightObject.rotation_euler = lookAtRotation(normal, "-z")
     # link empty to Scene
     context.scene.collection.objects.link(lightObject)
 
     return lightObject
+
+
+def PositionLight(lightObject: bpy.types.Object, normal: mathutils.Vector, lightDistance: float):
+    if "pivotPoint" not in lightObject:
+        print(
+            f"The Object that was tried to be positioned, doesnt have the pivot Point Property. Object is {lightObject}")
+        return
+
+    # Set position
+    pivotPosition = mathutils.Vector(
+        (lightObject["pivotPoint"][0], lightObject["pivotPoint"][1], lightObject["pivotPoint"][2]))
+    lightObject.location = pivotPosition + \
+        (normal * mathutils.Vector((lightDistance, lightDistance, lightDistance)))
+    # Set rotation
+    lightObject.rotation_euler = lookAtRotation(normal, "-z")
 
 #################################################################
 ######################## OPERATORS ##############################
@@ -214,11 +223,8 @@ class LIGHTCONTROL_OT_add_light(bpy.types.Operator):
     bl_label = "Adds an Area Light"
     bl_options = {'REGISTER', 'UNDO'}
 
-    # TODO - and start modal Positioning
-
     lightType: bpy.props.EnumProperty(items=[('AREA', 'Area Light', ''), ('POINT', 'Point Light', ''), ('SPOT', 'Spot Light', ''), (
         'SUN', 'Directional Light', '')], name="Light Types", description="Which Light Type should be spawned", default='AREA')
-    # lightType = 'AREA'
 
     def invoke(self, context: bpy.types.Context, event: bpy.types.Event):
         hit, normal, best_original = raycast(context, event)
@@ -227,24 +233,26 @@ class LIGHTCONTROL_OT_add_light(bpy.types.Operator):
             print("hit nothing, canceled")
             return {'CANCELLED'}
 
-        lightDistance: float = 3.0
-
         # Create light
+        lightDistance: float = 3.0
+        pivotPoint = mathutils.Vector(
+            (hit[0], hit[1], hit[2]))
+
         if self.lightType == 'AREA':
-            lightObject = CreateLight(context, mathutils.Vector(
-                (hit[0], hit[1], hit[2])), mathutils.Vector((normal[0], normal[1], normal[2])), lightDistance, 'AREA')
+            lightObject = CreateLight(context, pivotPoint, 'AREA')
         elif self.lightType == 'POINT':
-            lightObject = CreateLight(context, mathutils.Vector(
-                (hit[0], hit[1], hit[2])), mathutils.Vector((normal[0], normal[1], normal[2])), lightDistance, 'POINT')
+            lightObject = CreateLight(context, pivotPoint, 'POINT')
         elif self.lightType == 'SPOT':
-            lightObject = CreateLight(context, mathutils.Vector(
-                (hit[0], hit[1], hit[2])), mathutils.Vector((normal[0], normal[1], normal[2])), lightDistance, 'SPOT')
+            lightObject = CreateLight(context, pivotPoint, 'SPOT')
         elif self.lightType == 'SUN':
-            lightObject = CreateLight(context, mathutils.Vector(
-                (hit[0], hit[1], hit[2])), mathutils.Vector((normal[0], normal[1], normal[2])), lightDistance, 'SUN')
+            lightObject = CreateLight(context, pivotPoint, 'SUN')
         else:
             print("Couldnt add this lighttype.")
             return {'CANCELLED'}
+
+        # Position Light
+        PositionLight(lightObject, mathutils.Vector(
+            (normal[0], normal[1], normal[2])), lightDistance)
 
         # Set as active Object
         context.view_layer.objects.active = lightObject
@@ -335,7 +343,7 @@ def register():
         kmi.properties.lightType = 'SPOT'
         kmi = km.keymap_items.new(
             "lightcontrol.add_light", type='FOUR', value='PRESS', shift=True, ctrl=True)
-        kmi.properties.lightType = 'DIRECTIONAL'
+        kmi.properties.lightType = 'SUN'
         # adjust lights
         kmi = km.keymap_items.new(
             "lightcontrol.adjust_light", type='Q', value='PRESS', shift=True, ctrl=True)
