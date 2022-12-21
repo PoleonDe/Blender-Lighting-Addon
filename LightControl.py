@@ -109,8 +109,9 @@ def lookAtRotation(vec: mathutils.Vector, facingAxis="") -> mathutils.Vector:
     else:
         return azimuthElevation
 
-
 # Raycast
+
+
 def raycast(context: bpy.types.Context, event: bpy.types.Event):
     """Run this function on left mouse, execute the ray cast"""
     # get the context arguments
