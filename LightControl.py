@@ -1,6 +1,9 @@
 from bpy_extras import view3d_utils
+from bpy_extras.view3d_utils import region_2d_to_origin_3d, region_2d_to_vector_3d
+import bpy_extras.view3d_utils
 from math import cos
 from math import sin
+import sys
 from math import pi
 from math import sqrt
 from math import atan2
@@ -112,80 +115,58 @@ def lookAtRotation(vec: mathutils.Vector, facingAxis="") -> mathutils.Vector:
 # Raycast
 
 
-def raycast(context: bpy.types.Context, event: bpy.types.Event):
-    """Run this function on left mouse, execute the ray cast"""
-    # get the context arguments
-    scene = context.scene  # scene
-    region = context.region  # region
-    rv3d = context.region_data  # region data
-    coord = event.mouse_region_x, event.mouse_region_y  # mouse cords
+def raycastCursor(context: bpy.types.Context, mousepos: tuple, debug=False):  # -> bpy.types.Object,
+    """takes in the current context, a mouse position as a tuple x,y (region coords) and gives back the hit object, hit location, hit normal, hit index and hit distance"""
+    region = context.region
+    region_data = context.region_data
 
-    # get the ray from the viewport and mouse
-    view_vector = view3d_utils.region_2d_to_vector_3d(region, rv3d, coord)
-    ray_origin = view3d_utils.region_2d_to_origin_3d(region, rv3d, coord)
+    origin_3d = region_2d_to_origin_3d(region, region_data, mousepos)
+    vector_3d = region_2d_to_vector_3d(region, region_data, mousepos)
 
-    ray_target = ray_origin + view_vector
+    candidates = context.visible_objects
 
-    def visible_objects_and_duplis():
-        """Loop over (object, matrix) pairs (mesh only)"""
+    objects = [(obj, None) for obj in candidates if obj.type == "MESH"]
 
-        depsgraph = context.evaluated_depsgraph_get()
-        for dup in depsgraph.object_instances:
-            if dup.is_instance:  # Real dupli instance
-                obj = dup.instance_object
-                yield (obj, dup.matrix_world.copy())
-            else:  # Usual object
-                obj = dup.object
-                yield (obj, obj.matrix_world.copy())
+    if debug:
+        print(
+            f"mousePos: {mousepos} , origin_3d:{origin_3d} , vector_3d:{vector_3d} ")
+    hitobj = None
+    hitlocation = None
+    hitnormal = None
+    hitindex = None
+    hitdistance = sys.maxsize
 
-    def obj_ray_cast(obj, matrix):
-        """Wrapper for ray casting that moves the ray into object space"""
+    for obj, src in objects:
+        mx = obj.matrix_world
+        mxi = mx.inverted_safe()
 
-        # get the ray relative to the object
-        matrix_inv = matrix.inverted()
-        ray_origin_obj = matrix_inv @ ray_origin
-        ray_target_obj = matrix_inv @ ray_target
-        ray_direction_obj = ray_target_obj - ray_origin_obj
+        ray_origin = mxi @ origin_3d
+        ray_direction = mxi.to_3x3() @ vector_3d
 
-        # cast the ray
-        success, location, normal, face_index = obj.ray_cast(
-            ray_origin_obj, ray_direction_obj)
+        success, location, normal, index = obj.ray_cast(
+            origin=ray_origin, direction=ray_direction)
+        distance = (mx @ location - origin_3d).length
 
-        if success:
-            return location, normal, face_index
-        else:
-            return None, None, None
+        if debug:
+            print("candidate:", success, obj.name,
+                  location, normal, index, distance)
 
-    # cast rays and find the closest object
-    best_length_squared = -1.0
-    best_obj = None
-    hit_world = None
-    normal_world = None
+        if success and distance < hitdistance:
+            hitobj, hitlocation, hitnormal, hitindex, hitdistance = obj, mx @ location, mx.to_3x3() @ normal, index, distance
 
-    for obj, matrix in visible_objects_and_duplis():
-        if obj.type == 'MESH':
-            hit, normal, face_index = obj_ray_cast(obj, matrix)
-            if hit is not None:
-                hit_world = matrix @ hit
-                normal_world = matrix @ normal
-                # scene.cursor.location = hit_world
-                length_squared = (hit_world - ray_origin).length_squared
-                if best_obj is None or length_squared < best_length_squared:
-                    best_length_squared = length_squared
-                    best_obj = obj
+    if debug:
+        print("best hit:", hitobj.name if hitobj else None, hitlocation,
+              hitnormal, hitindex, hitdistance if hitobj else None)
+        print()
 
-    # now we have the object under the mouse cursor,
-    # we could do lots of stuff but for the example just select.
-    if best_obj is not None:
-        # for selection etc. we need the original object,
-        # evaluated objects are not in viewlayer
-        best_original = best_obj.original
-        return hit_world, normal_world, best_original
-    else:
-        return None, None, None
+    if hitobj:
+        return hitobj, hitlocation, hitnormal, hitindex, hitdistance
 
+    return None, None, None, None, None
 
 # Object Creation
+
+
 def CreateLight(context: bpy.types.Context, pivotPosition: mathutils.Vector, lightType: str) -> bpy.types.Object:
     """Creates a Light at position, Light types are POINT, SUN, SPOT, AREA"""
     # TODO : change lightDistance based on Camera Distance to Object
@@ -235,16 +216,16 @@ class LIGHTCONTROL_OT_add_light(bpy.types.Operator):
         'SUN', 'Directional Light', '')], name="Light Types", description="Which Light Type should be spawned", default='AREA')
 
     def invoke(self, context: bpy.types.Context, event: bpy.types.Event):
-        hit, normal, best_original = raycast(context, event)
-        # print(f'hit point is {hit} normal is  {normal}, best Original Object is {best_original}')
-        if not hit:
+        hitobj, hitlocation, hitnormal, hitindex, hitdistance = raycastCursor(
+            context, mousepos=(event.mouse_region_x, event.mouse_region_y), debug=False)
+        if not hitobj:
             print("hit nothing, canceled")
             return {'CANCELLED'}
 
         # Create light
         lightDistance: float = 3.0
         pivotPoint = mathutils.Vector(
-            (hit[0], hit[1], hit[2]))
+            (hitlocation[0], hitlocation[1], hitlocation[2]))
 
         if self.lightType == 'AREA':
             lightObject = CreateLight(context, pivotPoint, 'AREA')
@@ -260,7 +241,7 @@ class LIGHTCONTROL_OT_add_light(bpy.types.Operator):
 
         # Position Light
         PositionLight(lightObject, mathutils.Vector(
-            (normal[0], normal[1], normal[2])), lightDistance)
+            (hitnormal[0], hitnormal[1], hitnormal[2])), lightDistance)
 
         # Set as active Object
         context.view_layer.objects.active = lightObject
@@ -286,6 +267,7 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
     energyGrowthPercent = 0.25
     sizeChangeSensitivity = 0.02
     slowChangeSpeedPercent = 0.2
+    emptyDisplaySize = 0.04
     pauseExecution: bool = False
 
     @ classmethod
@@ -309,10 +291,15 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
             context.active_object["pivotPoint"] = (0, 0, 0)  # create it
         # create pivot
         self.pivotObject = bpy.data.objects.new("temporaryPivot", None)
-        self.pivotObject.empty_display_type = 'ARROWS'
+        self.pivotObject.empty_display_type = 'ARROWS'  # 'SINGLE_ARROW'
         self.pivotObject.location = mathutils.Vector(
             (lightObject["pivotPoint"][0], lightObject["pivotPoint"][1], lightObject["pivotPoint"][2]))
         bpy.context.scene.collection.objects.link(self.pivotObject)
+        # size pivot correctly
+        r3d = context.area.spaces.active.region_3d
+        distance: mathutils.Vector = self.pivotObject.location - \
+            r3d.view_matrix.inverted().translation
+        self.pivotObject.empty_display_size = distance.magnitude * self.emptyDisplaySize
         # unrotate and place light
         pivotToLight: mathutils.Vector = lightObject.location - self.pivotObject.location
         lightObject.rotation_euler = (0, pi*0.5, 0)  # make -Z look forward
@@ -334,6 +321,12 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
         # save the active object
         lightObject: bpy.types.Object = context.active_object
 
+        # Set pivot empty display size based on distance
+        r3d = context.area.spaces.active.region_3d
+        distance: mathutils.Vector = self.pivotObject.location - \
+            r3d.view_matrix.inverted().translation
+        self.pivotObject.empty_display_size = distance.magnitude * self.emptyDisplaySize
+
         # Pause Execution for repositioning Mouse
         if event.type == 'SPACE':
             self.pauseExecution = event.value == 'PRESS'
@@ -346,11 +339,13 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
             return {'PASS_THROUGH'}
         # Change Light Pivot Pos
         elif event.type == 'MOUSEMOVE' and event.ctrl:
-            hit, normal, best_original = raycast(context, event)
-            if hit:
-                self.pivotObject.location = hit
+            # hit, normal, best_original = raycast(context, event)
+            hitobj, hitlocation, hitnormal, hitindex, hitdistance = raycastCursor(
+                context, mousepos=(event.mouse_region_x, event.mouse_region_y), debug=False)
+            if hitobj:
+                self.pivotObject.location = hitlocation
                 # TODO : Implement Special case, normal is 0,0,1
-                self.pivotObject.rotation_euler = lookAtRotation(normal)
+                self.pivotObject.rotation_euler = lookAtRotation(hitnormal)
                 print('mousemove')
         # Change Light Size
         elif event.type == 'MOUSEMOVE' and event.alt:
@@ -398,9 +393,9 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
         elif (event.type == 'WHEELUPMOUSE' or event.type == 'WHEELDOWNMOUSE') and event.alt:
             step: float = 0.0
             if event.type == 'WHEELUPMOUSE':
-                step = 1.0
-            else:
                 step = -1.0
+            else:
+                step = 1.0
 
             if event.shift:
                 step *= self.slowChangeSpeedPercent
@@ -510,3 +505,7 @@ def unregister():
     for km, kmi in addon_keymaps:
         km.keymap_items.remove(kmi)
     addon_keymaps.clear()
+
+
+if __name__ == "__main__":
+    register()
