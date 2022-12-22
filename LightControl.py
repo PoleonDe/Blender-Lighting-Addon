@@ -183,7 +183,16 @@ def CreateLight(context: bpy.types.Context, pivotPosition: mathutils.Vector, lig
     lightObject["pivotPoint"] = (
         pivotPosition.x, pivotPosition.y, pivotPosition.z)
     # link empty to Scene
-    context.scene.collection.objects.link(lightObject)
+    # if context.collection == context.scene.collection:
+    #     lightCollection = bpy.data.collections.new(
+    #         "Lighting")  # create collection
+    #     context.scene.collection.children.link(
+    #         lightCollection)  # link collection
+    #     lightCollection.objects.link(lightObject)  # link light
+    #     lightCollectionLayerColl: bpy.types.LayerCollection = lightCollection
+    #     context.view_layer.active_layer_collection = lightCollectionLayerColl  # set active
+    # else:
+    context.collection.objects.link(lightObject)
 
     return lightObject
 
@@ -452,6 +461,7 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
             return {'FINISHED'}
         # Cancel Modal
         elif event.type in {'RIGHTMOUSE', 'ESC'}:
+            # TODO : Unparent and reset all values
             print('canceled adjusting Light')
             return {'CANCELLED'}
 
@@ -460,6 +470,42 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
         # TODO : Give User the option to have Light Groups
         # TODO : Give User the option to cycle Light Groups
         return {'RUNNING_MODAL'}
+
+# class LIGHTCONTROL_OT_create_world_setup(bpy.types.Operator):
+#     bl_idname = "lightcontrol.create_world_setup"
+#     bl_label = "Add mapping"
+#     bl_description = "Add mapping to world, if not existent"
+#     bl_options = {'REGISTER', 'UNDO'}
+
+#     def execute(self,context):
+
+#         # world = bpy.data.worlds.new("World HDRI")
+#         world = context.scene.world
+#         world.name = "World HDRI"
+#         world['is_world_hdri'] = True
+#         world.use_nodes = True
+#         nodes = world.node_tree.nodes
+#         links = world.node_tree.links
+
+#         # Mapping
+#         mapping = nodes.new('ShaderNodeMapping')
+#         mapping.location = (-200,0)
+
+#         coord = nodes.new('ShaderNodeTexCoord')
+#         coord.location = (-400,0)
+
+#         # Texture
+#         img = nodes.new('ShaderNodeTexEnvironment')
+#         img.location = (0,0)
+#         img.name = 'World HDRI Tex'
+
+#         # Shader
+#         bg = nodes['Background']
+#         bg.location = (300,0)
+
+#         # Output
+#         output = nodes['World Output']
+#         output.location = (500,0)
 
 
 #################################################################
