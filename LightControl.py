@@ -252,7 +252,11 @@ class LIGHTCONTROL_OT_add_light(bpy.types.Operator):
         PositionLight(lightObject, mathutils.Vector(
             (hitnormal[0], hitnormal[1], hitnormal[2])), lightDistance)
 
-        # Set as active Object
+        # Set as selected and active Object
+        for obj in context.selected_objects:  # deselect all
+            obj.select_set(False)
+        lightObject.select_set(True)
+
         context.view_layer.objects.active = lightObject
 
         # Create Adjust Light
