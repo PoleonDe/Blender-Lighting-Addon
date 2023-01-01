@@ -275,12 +275,21 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
     # temporary storeage of pivotObjectID
     pivotObject: bpy.types.Object = None
     # settings for modal
-    zoomSpeedPercent = 0.1
+    zoomSpeedPercent = 0.01
     rotationSpeed = 0.006
-    energyGrowthPercent = 0.25
-    sizeChangeSensitivity = 0.02
+    energyGrowthPercent = 0.01
+    sizeChangeSensitivity = 0.01
     slowChangeSpeedPercent = 0.2
     emptyDisplaySize = 0.04
+    # Input enablers for modal
+    approveOperation : bool = False
+    cancelOperation : bool = False
+    changeLightOrbit: bool = False
+    changeLightSize: bool = False
+    changeLightDistance: bool = False
+    changeLightBrightness: bool = False
+    changeLightColor: bool = False
+    changeLightPivot: bool = False
     pauseExecution: bool = False
 
     @ classmethod
@@ -340,18 +349,36 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
             r3d.view_matrix.inverted().translation
         self.pivotObject.empty_display_size = distance.magnitude * self.emptyDisplaySize
 
-        # Pause Execution for repositioning Mouse
+        # Calculate delta for later usage
+        delta: mathutils.Vector = mathutils.Vector((event.mouse_x - event.mouse_prev_x, event.mouse_y - event.mouse_prev_y, 0.0))
+
+        # Set Input Enabeling Variables
+        if event.type in {'LEFTMOUSE' , 'RET'}:
+            self.approveOperation = True
+        if event.type in {'RIGHTMOUSE', 'ESC'}:
+            self.cancelOperation = True
+        if event.type == 'S':
+            self.changeLightSize = event.value == 'PRESS'
+        if event.type == 'B':
+            self.changeLightBrightness = event.value == 'PRESS'
+        if event.type == 'D':
+            self.changeLightDistance = event.value == 'PRESS'
+        if event.type == 'C':
+            self.changelightColor = event.value == 'PRESS'
+        self.changeLightPivot = event.type == 'MOUSEMOVE' and event.ctrl
+        self.changeLightOrbit = event.type == 'MOUSEMOVE'     
         if event.type == 'SPACE':
             self.pauseExecution = event.value == 'PRESS'
-            print(f"pressed space , should pause {self.pauseExecution}")
+
+        # Pause Execution for repositioning Mouse
         if self.pauseExecution:
             return {'RUNNING_MODAL'}
 
         # Pass through Navigation
         if event.type == 'MIDDLEMOUSE':  # allow view navigation
             return {'PASS_THROUGH'}
-        # Change Light Pivot Pos
-        elif event.type == 'MOUSEMOVE' and event.ctrl:
+
+        elif self.changeLightPivot:
             # hit, normal, best_original = raycast(context, event)
             hitobj, hitlocation, hitnormal, hitindex, hitdistance = raycastCursor(
                 context, mousepos=(event.mouse_region_x, event.mouse_region_y), debug=False)
@@ -360,111 +387,104 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
                 # TODO : Implement Special case, normal is 0,0,1
                 self.pivotObject.rotation_euler = lookAtRotation(hitnormal)
                 print('mousemove')
-        # Change Light Size
-        elif event.type == 'MOUSEMOVE' and event.alt:
+                
+        elif self.changeLightSize:
+            # minimum and maximum Light Intensity
+            minimumIntensity : float = 0.001
+            maximumIntensity : float = 10000000
             # Multiplication Factor
-            delta = event.mouse_region_x - event.mouse_prev_x
-            changeRate = delta * self.sizeChangeSensitivity
+            changeRate = delta.x * self.sizeChangeSensitivity
             if event.shift:
                 changeRate *= self.slowChangeSpeedPercent
-            multiplicationFactor = 1.0 + changeRate
+            rateOfChange = 1.0 + changeRate
             # Setting Size
             lightObjectData: bpy.types.Light = lightObject.data
 
             if lightObjectData.type == 'AREA':
                 areaLightObjectData: bpy.types.AreaLight = lightObject.data
                 areaLightObjectData.size = bl_math.clamp(
-                    areaLightObjectData.size * multiplicationFactor, 0.001, 10000000)
-                #
+                    areaLightObjectData.size * rateOfChange, minimumIntensity, maximumIntensity)
             elif lightObjectData.type == 'POINT':
                 pointLightObjectData: bpy.types.PointLight = lightObject.data
                 pointLightObjectData.shadow_soft_size = bl_math.clamp(
-                    pointLightObjectData.shadow_soft_size * multiplicationFactor, 0.001, 10000000)
-                #
+                    pointLightObjectData.shadow_soft_size * rateOfChange, minimumIntensity, maximumIntensity)
             elif lightObjectData.type == 'SPOT':
                 spotLightObjectData: bpy.types.SpotLight = lightObject.data
                 spotLightObjectData.shadow_soft_size = bl_math.clamp(
-                    spotLightObjectData.shadow_soft_size * multiplicationFactor, 0.001, 10000000)
-                #
+                    spotLightObjectData.shadow_soft_size * rateOfChange, minimumIntensity, maximumIntensity)
             elif lightObjectData.type == 'SUN':
                 sunLightObjectData: bpy.types.SunLight = lightObject.data
                 sunLightObjectData.angle = bl_math.clamp(
-                    sunLightObjectData.angle * multiplicationFactor, 0.001, 180)
-        # Rotate Light
-        elif event.type == 'MOUSEMOVE':
-            delta: mathutils.Vector = mathutils.Vector((
-                event.mouse_x - event.mouse_prev_x, event.mouse_y - event.mouse_prev_y, 0.0))
-            delta *= self.rotationSpeed
-            if event.shift:
-                delta *= self.slowChangeSpeedPercent
-            xMultiplicator = delta.x
-            yMultiplicator = delta.y
-            # add delta rotation to existing rotation and clamp it
-            self.pivotObject.rotation_euler = mathutils.Euler((self.pivotObject.rotation_euler.x, clamp(
-                self.pivotObject.rotation_euler.y - yMultiplicator, -pi/2.0, pi/2.0), self.pivotObject.rotation_euler.z + xMultiplicator))
-        # Change Light Energy
-        elif (event.type == 'WHEELUPMOUSE' or event.type == 'WHEELDOWNMOUSE') and event.alt:
-            step: float = 0.0
-            if event.type == 'WHEELUPMOUSE':
-                step = -1.0
-            else:
-                step = 1.0
+                    sunLightObjectData.angle * rateOfChange, minimumIntensity, 180.0)
 
+        elif self.changeLightBrightness:
+            # minimum and maximum Light Intensity
+            minimumIntensity : float = 0.001
+            maximumIntensity : float = 10000000
+            # Get Delta
+            step: float = delta.x
+            # Adjust Rate of Change
             if event.shift:
                 step *= self.slowChangeSpeedPercent
-
+            step *= self.energyGrowthPercent
+            rateOfChange : float = 1.0 + step
+            # Set enery based on Lamp Type
             lightObjectData: bpy.types.Light = lightObject.data
 
             if lightObjectData.type == 'AREA':
                 areaLightObjectData: bpy.types.AreaLight = lightObject.data
                 areaLightObjectData.energy = bl_math.clamp(
-                    areaLightObjectData.energy * (1.0 - (step * self.energyGrowthPercent)), 0.001, 10000000)
+                    areaLightObjectData.energy * rateOfChange, minimumIntensity, maximumIntensity)
             elif lightObjectData.type == 'POINT':
                 pointLightObjectData: bpy.types.PointLight = lightObject.data
                 pointLightObjectData.energy = bl_math.clamp(
-                    pointLightObjectData.energy * (1.0 - (step * self.energyGrowthPercent)), 0.001, 10000000)
+                    pointLightObjectData.energy * rateOfChange, minimumIntensity, maximumIntensity)
             elif lightObjectData.type == 'SPOT':
                 spotLightObjectData: bpy.types.SpotLight = lightObject.data
                 spotLightObjectData.energy = bl_math.clamp(
-                    spotLightObjectData.energy * (1.0 - (step * self.energyGrowthPercent)), 0.001, 10000000)
+                    spotLightObjectData.energy * rateOfChange, minimumIntensity, maximumIntensity)
             elif lightObjectData.type == 'SUN':
                 sunLightObjectData: bpy.types.SunLight = lightObject.data
                 sunLightObjectData.energy = bl_math.clamp(
-                    sunLightObjectData.energy * (1.0 - (step * self.energyGrowthPercent)), 0.001, 10000000)
-        # Change Light Distance
-        elif event.type == 'WHEELUPMOUSE' or event.type == 'WHEELDOWNMOUSE':
-            step: float = 0.0
-            if event.type == 'WHEELUPMOUSE':
-                step = 1.0
-            else:
-                step = -1.0
-
+                    sunLightObjectData.energy * rateOfChange, minimumIntensity, maximumIntensity)
+        
+        elif self.changeLightDistance:
+            # Get Delta 
+            step: float = delta.x
+            # Adjust Rate of Change
             if event.shift:
                 step *= self.slowChangeSpeedPercent
-
+            step *= self.zoomSpeedPercent
+            # Set Position
             pos = mathutils.Vector(
-                (lightObject.location[0] * (1 + (step * self.zoomSpeedPercent)), lightObject.location[1], lightObject.location[2]))
+                (lightObject.location[0] * (1 + step), lightObject.location[1], lightObject.location[2]))
             lightObject.location = pos
-        # Finish Modal
-        elif event.type in {'LEFTMOUSE' , 'RET'}:
+
+        elif self.changeLightOrbit:
+            step : mathutils.Vector = delta * self.rotationSpeed
+            if event.shift:
+                step *= self.slowChangeSpeedPercent
+            xMultiplicator = step.x
+            yMultiplicator = step.y
+            # add delta rotation to existing rotation and clamp it
+            self.pivotObject.rotation_euler = mathutils.Euler((self.pivotObject.rotation_euler.x, clamp(
+                self.pivotObject.rotation_euler.y - yMultiplicator, -pi/2.0, pi/2.0), self.pivotObject.rotation_euler.z + xMultiplicator))
+
+        elif self.approveOperation:
             # save rotation
             rot = self.pivotObject.rotation_euler
-
             # Unparent
             world_loc = lightObject.matrix_world.to_translation()
             lightObject.parent = None
             lightObject.matrix_world.translation = world_loc
-
             # remove pivot Object
             bpy.data.objects.remove(self.pivotObject, do_unlink=True)
-
             # set Light as Active Object
             context.view_layer.objects.active = lightObject
-
             print('finished adjusting Light')
             return {'FINISHED'}
-        # Cancel Modal
-        elif event.type in {'RIGHTMOUSE', 'ESC'}:
+
+        elif self.cancelOperation:
             # TODO : Unparent and reset all values
             print('canceled adjusting Light')
             return {'CANCELLED'}
