@@ -446,7 +446,7 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
                 (lightObject.location[0] * (1 + (step * self.zoomSpeedPercent)), lightObject.location[1], lightObject.location[2]))
             lightObject.location = pos
         # Finish Modal
-        elif event.type == 'LEFTMOUSE':
+        elif event.type in {'LEFTMOUSE' , 'RET'}:
             # save rotation
             rot = self.pivotObject.rotation_euler
 
