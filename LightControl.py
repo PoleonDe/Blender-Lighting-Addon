@@ -543,7 +543,7 @@ def register():
         kmi.properties.lightType = 'SUN'
         # adjust lights
         kmi = km.keymap_items.new(
-            "lightcontrol.adjust_light", type='Q', value='PRESS', shift=True, ctrl=True)
+            "lightcontrol.adjust_light", type='E', value='PRESS') # shift=True, ctrl=True
         addon_keymaps.append((km, kmi))
 
 
