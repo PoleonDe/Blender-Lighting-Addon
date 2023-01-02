@@ -1,6 +1,5 @@
 from bpy_extras import view3d_utils
 from bpy_extras.view3d_utils import region_2d_to_origin_3d, region_2d_to_vector_3d
-import bpy_extras.view3d_utils
 from math import cos
 from math import sin
 import sys
@@ -12,12 +11,14 @@ from math import radians
 import bl_math
 import mathutils
 import bpy
+from bpy.types import Menu
+
 
 bl_info = {
     "name": "Light Control",
     "description": "Tools that lets you easily create and adjust lights",
     "author": "Malte Decker",
-    "version": (0, 2, 0),
+    "version": (0, 3, 0),
     "blender": (3, 3, 0),
     "location": "Shortcuts : CTRL + SHIFT + 1/2/3/4 and E",
 }
@@ -53,7 +54,13 @@ def resetCursorToCenterRegion(context: bpy.types.Context):
     context.window.cursor_warp(cx, cy)
 
 
+def setMousePositionAtCoordinate(context: bpy.types.Context, mousePosition: tuple[int, int]):
+
+    context.window.cursor_warp(mousePosition[0], mousePosition[1])
+
 # Math
+
+
 def lerp(a: float, b: float, t: float) -> float:
     return (1 - t) * a + t * b
 
@@ -84,8 +91,6 @@ def intensityByInverseSquareLaw(referenceIntensity: float, referenceDistance: fl
     lightIntensityRateOfChange: float = referenceIntensity / lightIntensityAtNewDistance
     return referenceIntensity * lightIntensityRateOfChange
 
-# TODO : Rotations fail when not XYZ Rotation Order.
-
 
 def vector_to_azimuth_elevation(vec: mathutils.Vector) -> mathutils.Vector:
     # azimuth
@@ -100,11 +105,9 @@ def vector_to_azimuth_elevation(vec: mathutils.Vector) -> mathutils.Vector:
     # return
     return mathutils.Vector((0.0, elevation, azimuth))
 
-# TODO : Rotations fail when not XYZ Rotation Order.
-
 
 def lookAtRotation(vec: mathutils.Vector, facingAxis="") -> mathutils.Vector:
-    """ specify look at facing Axis by string x,y,z or -x,-y,-z"""
+    """ specify look at facing Axis by string x,y,z or -x,-y,-z, its important to keep rotation Order as XYZ"""
     azimuthElevation = vector_to_azimuth_elevation(vec)
     if facingAxis == "x":
         return mathutils.Vector((0.0, azimuthElevation.y + pi, azimuthElevation.z))
@@ -297,6 +300,7 @@ class LIGHTCONTROL_OT_add_light(bpy.types.Operator):
     bl_label = "Adds an Area Light"
     bl_options = {'REGISTER', 'UNDO'}
 
+    # Properties
     lightType: bpy.props.EnumProperty(items=[('AREA', 'Area Light', ''), ('POINT', 'Point Light', ''), ('SPOT', 'Spot Light', ''), (
         'SUN', 'Directional Light', '')], name="Light Types", description="Which Light Type should be spawned", default='AREA')
     initialLightDistancePercent: float = 0.35  # range from 0.0 to 1.0
@@ -306,29 +310,33 @@ class LIGHTCONTROL_OT_add_light(bpy.types.Operator):
         if self.lightType not in {'AREA', 'POINT', 'SPOT', 'SUN'}:
             print("Couldnt add this lighttype.")
             return {'CANCELLED'}
-
+        # Set Mouse Position based on Pie Menu Call
+        mousePosition: tuple[int, int] = (
+            event.mouse_region_x, event.mouse_region_y)
+        if context.scene['PieMenuMousePosition']:
+            # Set Mouse Pos
+            mousePosition = int(
+                context.scene.PieMenuMousePosition[0]), int(context.scene.PieMenuMousePosition[1])
+            # Delete Property
+            del bpy.types.Scene.PieMenuMousePosition
         # Raycast and Cancel if nothing hit
         hitobj, hitlocation, hitnormal, hitindex, hitdistance = raycastCursor(
-            context, mousepos=(event.mouse_region_x, event.mouse_region_y), debug=False)
+            context, mousepos=mousePosition, debug=False)
         if not hitobj:
             print("hit nothing, canceled")
             return {'CANCELLED'}
-
         # Calculate Light Distance
         pivotPoint = mathutils.Vector(
             (hitlocation[0], hitlocation[1], hitlocation[2]))
         lightDistance: float = 3.0
-        # if there is a camera, use it to calculate the lightintensity.
+        # if there is a camera, use it to calculate an appropriate light distance.
         if context.scene.camera:
             cameraToPivot: mathutils.Vector = context.scene.camera.location - pivotPoint
             lightDistance: float = cameraToPivot.magnitude * self.initialLightDistancePercent
-
         # Create Light
         lightObject = CreateLight(context, pivotPoint, str(self.lightType))
-
         # Calculate Light Intensity
         lightIntensity: float = 3.0  # light Intensity when Sunlight
-
         lightObjectData: bpy.types.Light = lightObject.data
         if lightObjectData.type == 'AREA':  # Light Intensity when Area
             lightIntensity = intensityByInverseSquareLaw(
@@ -336,25 +344,49 @@ class LIGHTCONTROL_OT_add_light(bpy.types.Operator):
         elif lightObjectData.type != 'SUN':  # Light Intensity when other light Type
             lightIntensity = intensityByInverseSquareLaw(
                 60, 2.5, lightDistance)
-
         # Set Light Intensity
         SetLightIntensity(lightObject, lightIntensity)
-
         # Position Light
         PositionLight(lightObject, mathutils.Vector(
             (hitnormal[0], hitnormal[1], hitnormal[2])), lightDistance)
-
         # Set as selected and active Object
         for obj in context.selected_objects:  # deselect all
             obj.select_set(False)
         lightObject.select_set(True)
-
         context.view_layer.objects.active = lightObject
-
-        # Create Adjust Light
+        # Go into Adjust Light mode
         print("invoke Adjust Light no Params")
         if bpy.ops.lightcontrol.adjust_light.poll():
             bpy.ops.lightcontrol.adjust_light('INVOKE_DEFAULT')
+        return {'FINISHED'}
+
+
+class LIGHTCONTROL_MT_add_light_pie_menu(Menu):
+    # label is displayed at the center of the pie menu.
+    bl_label = "Add Light at Cursor"
+
+    def draw(self, context):
+        layout = self.layout
+
+        pie = layout.menu_pie()
+        # operator_enum will just spread all available options
+        # for the type enum of the operator on the pie
+        pie.operator_enum("lightcontrol.add_light", "lightType")
+
+
+class LIGHTCONTROL_OT_add_light_pie_menu_call(bpy.types.Operator):
+    bl_idname = 'lightcontrol.add_light_pie_menu_call'
+    bl_label = 'Lightcontrol Add Pie Menu'
+    bl_description = 'Call Add Light Pie Menu, to create a Light Source at Cursor'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def invoke(self, context: bpy.types.Context, event: bpy.types.Event):
+        bpy.ops.wm.call_menu_pie(name="LIGHTCONTROL_MT_add_light_pie_menu")
+        # remember Mouse position when Object was created
+        bpy.types.Scene.PieMenuMousePosition = bpy.props.FloatVectorProperty(
+            name="Pie Menu Mouse Position", description="Mouse Position when Pie Menu was Initialized")
+        context.scene.PieMenuMousePosition = (
+            (event.mouse_region_x, event.mouse_region_y, 0.0))
         return {'FINISHED'}
 
 
@@ -370,6 +402,7 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
     zoomSpeedPercent = 0.01
     rotationSpeed = 0.006
     energyGrowthPercent = 0.01
+    angleChangeSensitivity = 0.01
     sizeChangeSensitivity = 0.01
     hueChangeSensitivity = 0.0003
     saturationChangeSensitivity = 0.002
@@ -382,6 +415,7 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
     changeLightSize: bool = False
     changeLightDistance: bool = False
     changeLightBrightness: bool = False
+    changeLightAngle: bool = False
     changeLightColor: bool = False
     changeLightPivot: bool = False
     pauseExecution: bool = False
@@ -399,7 +433,7 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
         return {'CANCELLED'}
 
     def invoke(self, context: bpy.types.Context, event: bpy.types.Event):
-        # save the active object
+        # set light Object as the active object
         lightObject = context.active_object
         # when there is no custom attribute in the object.
         if "pivotPoint" not in lightObject:
@@ -448,7 +482,7 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
             (event.mouse_x - event.mouse_prev_x, event.mouse_y - event.mouse_prev_y, 0.0))
 
         # Set Input Enabeling Variables
-        if event.type in {'LEFTMOUSE', 'RET'}:
+        if event.type in {'LEFTMOUSE', 'RET', 'E'}:
             self.approveOperation = True
         if event.type in {'RIGHTMOUSE', 'ESC'}:
             self.cancelOperation = True
@@ -460,6 +494,8 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
             self.changeLightDistance = event.value == 'PRESS'
         if event.type == 'C':
             self.changeLightColor = event.value == 'PRESS'
+        if event.type == 'A':
+            self.changeLightAngle = event.value == 'PRESS'
         self.changeLightPivot = event.type == 'MOUSEMOVE' and event.ctrl
         self.changeLightOrbit = event.type == 'MOUSEMOVE'
         if event.type == 'SPACE':
@@ -494,7 +530,33 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
                 self.pivotObject.location = hitlocation
                 # TODO : Implement Special case, normal is 0,0,1
                 self.pivotObject.rotation_euler = lookAtRotation(hitnormal)
+                lightObject["pivotPoint"] = (
+                    hitlocation.x, hitlocation.y, hitlocation.z)
                 print('mousemove')
+
+        elif self.changeLightAngle:
+            # return early
+            lightObjectData: bpy.types.Light = lightObject.data
+            if lightObjectData.type not in {'AREA', 'SPOT'}:
+                return {'RUNNING_MODAL'}
+            # Get Delta
+            step: mathutils.Vector = delta
+            # Adjust Rate of Change
+            if event.shift:
+                step *= self.slowChangeSpeedPercent
+            step *= self.angleChangeSensitivity
+            rateOfChangeX: float = 1.0 + step.x
+            rateOfChangeY: float = 1.0 + step.y
+            if lightObjectData.type == 'SPOT':
+                spotLightObjectData: bpy.types.SpotLight = lightObjectData
+                spotLightObjectData.spot_size = bl_math.clamp(
+                    spotLightObjectData.spot_size * rateOfChangeX, 0.017, 3.1415)  # in Radians
+                spotLightObjectData.spot_blend = bl_math.clamp(
+                    spotLightObjectData.spot_blend * rateOfChangeY, 0.01, 1.0)
+            elif lightObjectData.type == 'AREA':
+                areaLightObjectData: bpy.types.AreaLight = lightObjectData
+                areaLightObjectData.spread = bl_math.clamp(
+                    areaLightObjectData.spread * rateOfChangeX, 0.017, 3.1415)  # in Radians
 
         elif self.changeLightSize:
             # minimum and maximum Light Intensity
@@ -540,6 +602,9 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
             SetLightIntensityByRatioClamped(lightObject, rateOfChange)
 
         elif self.changeLightDistance:
+            lightObjectData: bpy.types.Light = lightObject.data
+            if lightObjectData.type == 'SUN':
+                return {'RUNNING_MODAL'}
             # Get Delta
             step: float = delta.x
             # Adjust Rate of Change
@@ -549,20 +614,21 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
             # Calculate Position
             newPosition = mathutils.Vector(
                 (lightObject.location[0] * (1 + step), lightObject.location[1], lightObject.location[2]))
-            # # Compensate Lighting # TODO : Light Compensation has some fails, once light is clamped the value change doesnt work correctly anymore
-            lightObjectData: bpy.types.Light = lightObject.data
-            if lightObjectData.type != 'SUN':
-                pivotPoint: mathutils.Vector = mathutils.Vector(
-                    (lightObject["pivotPoint"][0], lightObject["pivotPoint"][1], lightObject["pivotPoint"][2]))
-                oldLightDistanceToPivot: float = (
-                    lightObject.location - pivotPoint).magnitude
-                newLightDistanceToPivot: float = (
-                    newPosition - pivotPoint).magnitude
-                adjustedIntensity: float = intensityByInverseSquareLaw(GetLightIntensity(
-                    lightObject), oldLightDistanceToPivot, newLightDistanceToPivot)
+            # Calculate Compensation of Lighting by Distance
+            pivotPoint: mathutils.Vector = mathutils.Vector(
+                (lightObject["pivotPoint"][0], lightObject["pivotPoint"][1], lightObject["pivotPoint"][2]))
+            oldLightDistanceToPivot: float = (
+                lightObject.location - pivotPoint).magnitude
+            newLightDistanceToPivot: float = (
+                newPosition - pivotPoint).magnitude
+            adjustedIntensity: float = intensityByInverseSquareLaw(GetLightIntensity(
+                lightObject), oldLightDistanceToPivot, newLightDistanceToPivot)
+            # TODO: not the prettiest but for now it will do
+            if newLightDistanceToPivot < 100.0:
+                # Adjust Light Intensity
                 SetLightIntensity(lightObject, adjustedIntensity)
-            # Set Position
-            lightObject.location = newPosition
+                # Set Position
+                lightObject.location = newPosition
 
         elif self.changeLightOrbit:
             step: mathutils.Vector = delta * self.rotationSpeed
@@ -593,6 +659,7 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
         # TODO : Give User the option to have Light Groups
         # TODO : Give User the option to cycle Light Groups
         return {'RUNNING_MODAL'}
+
 
 # class LIGHTCONTROL_OT_create_world_setup(bpy.types.Operator):
 #     bl_idname = "lightcontrol.create_world_setup"
@@ -629,13 +696,12 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
 #         # Output
 #         output = nodes['World Output']
 #         output.location = (500,0)
-
-
 #################################################################
 ####################### REGISTRATION ############################
 #################################################################
 addon_keymaps = []
-classes = (LIGHTCONTROL_OT_add_light, LIGHTCONTROL_OT_adjust_light)
+classes = (LIGHTCONTROL_OT_add_light, LIGHTCONTROL_MT_add_light_pie_menu,
+           LIGHTCONTROL_OT_add_light_pie_menu_call, LIGHTCONTROL_OT_adjust_light)
 
 
 def register():
@@ -648,18 +714,21 @@ def register():
         # TODO : Change the name="" to Object mode
         # spawn lights
         km = kc.keymaps.new(name='3D View', space_type='VIEW_3D')
+        # shift=True, ctrl=True
         kmi = km.keymap_items.new(
-            "lightcontrol.add_light", type='ONE', value='PRESS', shift=True, ctrl=True)
-        kmi.properties.lightType = 'AREA'
-        kmi = km.keymap_items.new(
-            "lightcontrol.add_light", type='TWO', value='PRESS', shift=True, ctrl=True)
-        kmi.properties.lightType = 'POINT'
-        kmi = km.keymap_items.new(
-            "lightcontrol.add_light", type='THREE', value='PRESS', shift=True, ctrl=True)
-        kmi.properties.lightType = 'SPOT'
-        kmi = km.keymap_items.new(
-            "lightcontrol.add_light", type='FOUR', value='PRESS', shift=True, ctrl=True)
-        kmi.properties.lightType = 'SUN'
+            "lightcontrol.add_light_pie_menu_call", type='E', value='PRESS', shift=True)
+        # kmi = km.keymap_items.new(
+        #     "lightcontrol.add_light", type='ONE', value='PRESS', shift=True, ctrl=True)
+        # kmi.properties.lightType = 'AREA'
+        # kmi = km.keymap_items.new(
+        #     "lightcontrol.add_light", type='TWO', value='PRESS', shift=True, ctrl=True)
+        # kmi.properties.lightType = 'POINT'
+        # kmi = km.keymap_items.new(
+        #     "lightcontrol.add_light", type='THREE', value='PRESS', shift=True, ctrl=True)
+        # kmi.properties.lightType = 'SPOT'
+        # kmi = km.keymap_items.new(
+        #     "lightcontrol.add_light", type='FOUR', value='PRESS', shift=True, ctrl=True)
+        # kmi.properties.lightType = 'SUN'
         # adjust lights
         kmi = km.keymap_items.new(
             "lightcontrol.adjust_light", type='E', value='PRESS')  # shift=True, ctrl=True
