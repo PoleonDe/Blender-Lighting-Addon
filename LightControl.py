@@ -217,6 +217,16 @@ def PositionLight(lightObject: bpy.types.Object, normal: mathutils.Vector, light
     # Set rotation
     lightObject.rotation_euler = lookAtRotation(normal, "-z")
 
+def UnparentAndKeepPositionRemoveParent(parent : bpy.types.Object, child : bpy.types.Object):
+    # save rotation
+    rot = parent.rotation_euler
+    # Unparent
+    world_loc = child.matrix_world.to_translation()
+    child.parent = None
+    child.matrix_world.translation = world_loc
+    # remove pivot Object
+    bpy.data.objects.remove(parent, do_unlink=True)
+
 # Light Adjustment Functions
 def GetLightIntensity(lightObject: bpy.types.Object) -> float:
     # Get enery based on Lamp Type
@@ -541,21 +551,16 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
                 self.pivotObject.rotation_euler.y - yMultiplicator, -pi/2.0, pi/2.0), self.pivotObject.rotation_euler.z + xMultiplicator))
 
         elif self.approveOperation:
-            # save rotation
-            rot = self.pivotObject.rotation_euler
-            # Unparent
-            world_loc = lightObject.matrix_world.to_translation()
-            lightObject.parent = None
-            lightObject.matrix_world.translation = world_loc
-            # remove pivot Object
-            bpy.data.objects.remove(self.pivotObject, do_unlink=True)
+            UnparentAndKeepPositionRemoveParent(self.pivotObject, lightObject)
             # set Light as Active Object
             context.view_layer.objects.active = lightObject
             print('finished adjusting Light')
             return {'FINISHED'}
 
         elif self.cancelOperation:
-            # TODO : Unparent and reset all values
+            UnparentAndKeepPositionRemoveParent(self.pivotObject, lightObject)
+            # set Light as Active Object
+            context.view_layer.objects.active = lightObject
             print('canceled adjusting Light')
             return {'CANCELLED'}
 
