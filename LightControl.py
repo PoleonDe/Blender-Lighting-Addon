@@ -345,6 +345,7 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
     rotationSpeed = 0.006
     energyGrowthPercent = 0.01
     sizeChangeSensitivity = 0.01
+    colorChangeSensitivity = 0.0008
     slowChangeSpeedPercent = 0.2
     emptyDisplaySize = 0.04
     # Input enablers for modal
@@ -430,7 +431,7 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
         if event.type == 'D':
             self.changeLightDistance = event.value == 'PRESS'
         if event.type == 'C':
-            self.changelightColor = event.value == 'PRESS'
+            self.changeLightColor = event.value == 'PRESS'
         self.changeLightPivot = event.type == 'MOUSEMOVE' and event.ctrl
         self.changeLightOrbit = event.type == 'MOUSEMOVE'     
         if event.type == 'SPACE':
@@ -443,6 +444,17 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
         # Pass through Navigation
         if event.type == 'MIDDLEMOUSE':  # allow view navigation
             return {'PASS_THROUGH'}
+        
+        elif self.changeLightColor:
+            # Get Light Color
+            lightObjectData : bpy.types.Light = lightObject.data
+            lightColor : mathutils.Color = lightObjectData.color
+            # Calculate Rate of Change
+            hue : float = (lightColor.hsv[0] + delta.x * self.colorChangeSensitivity) % 1.0
+            sat : float = bl_math.clamp(lightColor.hsv[1] + delta.y * self.colorChangeSensitivity,0.0,1.0)
+            val : float = lightColor.hsv[2]
+            # Set light Color
+            lightColor.hsv = (hue,sat,val)
 
         elif self.changeLightPivot:
             # hit, normal, best_original = raycast(context, event)
