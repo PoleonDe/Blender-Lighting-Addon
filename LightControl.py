@@ -12,13 +12,14 @@ import bl_math
 import mathutils
 import bpy
 from bpy.types import Menu
+import blf
 
 
 bl_info = {
     "name": "Light Control",
     "description": "Tools that lets you easily create and adjust lights",
     "author": "Malte Decker",
-    "version": (0, 3, 0),
+    "version": (0, 4, 0),
     "blender": (3, 3, 0),
     "location": "Shortcuts : CTRL + SHIFT + 1/2/3/4 and E",
 }
@@ -290,6 +291,49 @@ def SetLightIntensityByRatioClamped(lightObject: bpy.types.Object, changeRatePer
     SetLightIntensity(lightObject, GetLightIntensity(
         lightObject) * changeRatePercent)
 
+# drawing Labels
+
+
+def drawOperationOptions(self, context):
+    font_id = 0
+    blf.color(font_id, 1.0, 1.0, 1.0, 1.0)
+    blf.size(font_id, 12, 72)
+
+    if self.changeLightSize:
+        blf.position(font_id, 15, 100, 0)
+        blf.draw(font_id, "Hold S      move Mouse Left/Right")
+    elif self.changeLightDistance:
+        blf.position(font_id, 15, 100, 0)
+        blf.draw(font_id, "Hold D      move Mouse Left/Right")
+    elif self.changeLightBrightness:
+        blf.position(font_id, 15, 100, 0)
+        blf.draw(font_id, "Hold B      move Mouse Left/Right")
+    elif self.changeLightAngle:
+        blf.position(font_id, 15, 100, 0)
+        blf.draw(font_id, "Hold A      move Mouse Left/Right")
+    elif self.changeLightPivot:
+        blf.position(font_id, 15, 100, 0)
+        blf.draw(font_id, "Hold CTRL    to reposition Light Origin")
+    elif self.changeLightColor:
+        blf.position(font_id, 15, 100, 0)
+        blf.draw(
+            font_id, "Hold C      move Mouse Left/Right = Hue , move Mouse Up/Down = Saturation")
+    elif self.changeLightOrbit:
+        # TODO :  Implement settings based on Light Type.
+        blf.position(font_id, 15, 100, 0)
+        blf.draw(font_id, "Color        C")
+        blf.position(font_id, 15, 115, 0)
+        blf.draw(font_id, "Angle        A")
+        blf.position(font_id, 15, 130, 0)
+        blf.draw(font_id, "Distance     D")
+        blf.position(font_id, 15, 145, 0)
+        blf.draw(font_id, "Brightness   B")
+        blf.position(font_id, 15, 160, 0)
+        blf.draw(font_id, "Size         S")
+        blf.position(font_id, 15, 175, 0)
+        blf.draw(font_id, "Orbit        Mousemove Horizontal/Vertical")
+
+
 #################################################################
 ######################## OPERATORS ##############################
 #################################################################
@@ -433,6 +477,10 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
         return {'CANCELLED'}
 
     def invoke(self, context: bpy.types.Context, event: bpy.types.Event):
+        # Draw Operator Options
+        args = (self, context)
+        self._handle = bpy.types.SpaceView3D.draw_handler_add(
+            drawOperationOptions, args, 'WINDOW', 'POST_PIXEL')
         # set light Object as the active object
         lightObject = context.active_object
         # when there is no custom attribute in the object.
@@ -465,6 +513,9 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
         return {'RUNNING_MODAL'}
 
     def modal(self, context, event):
+        # draw Labels
+        context.area.tag_redraw()
+
         # wrap mouse movement so it stays in window
         wrapMouseInWindow(context, event)
 
@@ -642,6 +693,9 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
                 self.pivotObject.rotation_euler.y - yMultiplicator, -pi/2.0, pi/2.0), self.pivotObject.rotation_euler.z + xMultiplicator))
 
         elif self.approveOperation:
+            # Remove Operation Labels
+            bpy.types.SpaceView3D.draw_handler_remove(self._handle, 'WINDOW')
+            # Unparent
             UnparentAndKeepPositionRemoveParent(self.pivotObject, lightObject)
             # set Light as Active Object
             context.view_layer.objects.active = lightObject
@@ -649,6 +703,9 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
             return {'FINISHED'}
 
         elif self.cancelOperation:
+            # Remove Operation Labels
+            bpy.types.SpaceView3D.draw_handler_remove(self._handle, 'WINDOW')
+            # Unparent
             UnparentAndKeepPositionRemoveParent(self.pivotObject, lightObject)
             # set Light as Active Object
             context.view_layer.objects.active = lightObject
