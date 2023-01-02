@@ -301,7 +301,7 @@ class LIGHTCONTROL_OT_add_light(bpy.types.Operator):
     bl_options = {'REGISTER', 'UNDO'}
 
     # Properties
-    lightType: bpy.props.EnumProperty(items=[('AREA', 'Area Light', ''), ('POINT', 'Point Light', ''), ('SPOT', 'Spot Light', ''), (
+    lightType: bpy.props.EnumProperty(items=[('POINT', 'Point Light', ''), ('AREA', 'Area Light', ''), ('SPOT', 'Spot Light', ''), (
         'SUN', 'Directional Light', '')], name="Light Types", description="Which Light Type should be spawned", default='AREA')
     initialLightDistancePercent: float = 0.35  # range from 0.0 to 1.0
 
@@ -363,7 +363,7 @@ class LIGHTCONTROL_OT_add_light(bpy.types.Operator):
 
 class LIGHTCONTROL_MT_add_light_pie_menu(Menu):
     # label is displayed at the center of the pie menu.
-    bl_label = "Add Light at Cursor"
+    bl_label = "Add Light at Mouse"
 
     def draw(self, context):
         layout = self.layout
@@ -482,7 +482,7 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
             (event.mouse_x - event.mouse_prev_x, event.mouse_y - event.mouse_prev_y, 0.0))
 
         # Set Input Enabeling Variables
-        if event.type in {'LEFTMOUSE', 'RET', 'E'}:
+        if event.type in {'LEFTMOUSE', 'RET'}:
             self.approveOperation = True
         if event.type in {'RIGHTMOUSE', 'ESC'}:
             self.cancelOperation = True
@@ -537,7 +537,7 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
         elif self.changeLightAngle:
             # return early
             lightObjectData: bpy.types.Light = lightObject.data
-            if lightObjectData.type not in {'AREA', 'SPOT'}:
+            if lightObjectData.type not in {'AREA', 'SPOT', 'SUN'}:
                 return {'RUNNING_MODAL'}
             # Get Delta
             step: mathutils.Vector = delta
@@ -557,8 +557,15 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
                 areaLightObjectData: bpy.types.AreaLight = lightObjectData
                 areaLightObjectData.spread = bl_math.clamp(
                     areaLightObjectData.spread * rateOfChangeX, 0.017, 3.1415)  # in Radians
+            elif lightObjectData.type == 'SUN':
+                sunLightObjectData: bpy.types.SunLight = lightObjectData
+                sunLightObjectData.angle = bl_math.clamp(
+                    sunLightObjectData.angle * rateOfChangeX, 0.001, 180.0)
 
         elif self.changeLightSize:
+            lightObjectData: bpy.types.Light = lightObject.data
+            if lightObjectData.type not in {'AREA', 'POINT', 'SPOT'}:
+                return {'RUNNING_MODAL'}
             # minimum and maximum Light Intensity
             minimumIntensity: float = 0.001
             maximumIntensity: float = 10000000
@@ -568,8 +575,6 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
                 changeRate *= self.slowChangeSpeedPercent
             rateOfChange = 1.0 + changeRate
             # Setting Size
-            lightObjectData: bpy.types.Light = lightObject.data
-
             if lightObjectData.type == 'AREA':
                 areaLightObjectData: bpy.types.AreaLight = lightObject.data
                 areaLightObjectData.size = bl_math.clamp(
@@ -582,10 +587,6 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
                 spotLightObjectData: bpy.types.SpotLight = lightObject.data
                 spotLightObjectData.shadow_soft_size = bl_math.clamp(
                     spotLightObjectData.shadow_soft_size * rateOfChange, minimumIntensity, maximumIntensity)
-            elif lightObjectData.type == 'SUN':
-                sunLightObjectData: bpy.types.SunLight = lightObject.data
-                sunLightObjectData.angle = bl_math.clamp(
-                    sunLightObjectData.angle * rateOfChange, minimumIntensity, 180.0)
 
         elif self.changeLightBrightness:
             # minimum and maximum Light Intensity
@@ -711,24 +712,11 @@ def register():
     wm = bpy.context.window_manager
     kc = wm.keyconfigs.addon
     if kc:
-        # TODO : Change the name="" to Object mode
-        # spawn lights
+        # TODO : Change the name="" to Object mode somehow
         km = kc.keymaps.new(name='3D View', space_type='VIEW_3D')
-        # shift=True, ctrl=True
+        # spawn lights
         kmi = km.keymap_items.new(
             "lightcontrol.add_light_pie_menu_call", type='E', value='PRESS', shift=True)
-        # kmi = km.keymap_items.new(
-        #     "lightcontrol.add_light", type='ONE', value='PRESS', shift=True, ctrl=True)
-        # kmi.properties.lightType = 'AREA'
-        # kmi = km.keymap_items.new(
-        #     "lightcontrol.add_light", type='TWO', value='PRESS', shift=True, ctrl=True)
-        # kmi.properties.lightType = 'POINT'
-        # kmi = km.keymap_items.new(
-        #     "lightcontrol.add_light", type='THREE', value='PRESS', shift=True, ctrl=True)
-        # kmi.properties.lightType = 'SPOT'
-        # kmi = km.keymap_items.new(
-        #     "lightcontrol.add_light", type='FOUR', value='PRESS', shift=True, ctrl=True)
-        # kmi.properties.lightType = 'SUN'
         # adjust lights
         kmi = km.keymap_items.new(
             "lightcontrol.adjust_light", type='E', value='PRESS')  # shift=True, ctrl=True
