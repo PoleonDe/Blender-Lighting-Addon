@@ -394,7 +394,7 @@ def drawOperationOptions(self, context):
         {"Header": "Light Color", "Description": "Hold C move Mouse Left/Right = Hue , move Mouse Up/Down = Saturation",
             "Value": self.lightColor, "ActivationBool": self.changeLightColor},
         {"Header": "Orbit", "Description": "Move Mouse Left/Right",
-            "Value": self.lightOrbit, "ActivationBool": True}  # self.changeLightOrbit
+            "Value": self.lightOrbit, "ActivationBool": self.changeLightOrbit}
     ]
 
     stopLoop: bool = False
@@ -425,6 +425,10 @@ def drawOperationOptions(self, context):
             break
 
     availableOperations = [
+        {"Key": "SPACE", "Description": "Orbit", "AvailableLightType": {
+            'AREA', 'POINT', 'SPOT', 'SUN'}},
+        {"Key": "CTRL", "Description": "Pivot",
+            "AvailableLightType": {'AREA', 'POINT', 'SPOT', 'SUN'}},
         {"Key": "C", "Description": "Color", "AvailableLightType": {
             'AREA', 'POINT', 'SPOT', 'SUN'}},
         {"Key": "A", "Description": "Angle",
@@ -434,9 +438,7 @@ def drawOperationOptions(self, context):
         {"Key": "B", "Description": "Brightness",
             "AvailableLightType": {'AREA', 'POINT', 'SPOT', 'SUN'}},
         {"Key": "S", "Description": "Size",
-            "AvailableLightType": {'AREA', 'POINT', 'SPOT'}},
-        {"Key": "CTRL", "Description": "Pivot",
-            "AvailableLightType": {'AREA', 'POINT', 'SPOT', 'SUN'}}
+            "AvailableLightType": {'AREA', 'POINT', 'SPOT'}}
     ]
 
     blf.size(font_id, 16, 72)
@@ -499,7 +501,7 @@ class LIGHTCONTROL_OT_add_light(bpy.types.Operator):
 
     # Properties
     lightType: bpy.props.EnumProperty(items=[('POINT', 'Point Light', ''), ('AREA', 'Area Light', ''), ('SPOT', 'Spot Light', ''), (
-        'SUN', 'Directional Light', '')], name="Light Types", description="Which Light Type should be spawned", default='AREA')
+        'SUN', 'Sun Light', '')], name="Light Types", description="Which Light Type should be spawned", default='AREA')
     initialLightDistancePercent: float = 0.45  # range from 0.0 to 1.0
 
     def invoke(self, context: bpy.types.Context, event: bpy.types.Event):
@@ -718,10 +720,9 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
             self.changeLightColor = event.value == 'PRESS'
         if event.type == 'A':
             self.changeLightAngle = event.value == 'PRESS'
-        self.changeLightPivot = event.type == 'MOUSEMOVE' and event.ctrl
-        self.changeLightOrbit = event.type == 'MOUSEMOVE'
         if event.type == 'SPACE':
-            self.pauseExecution = event.value == 'PRESS'
+            self.changeLightOrbit = event.value == 'PRESS'
+        self.changeLightPivot = event.type == 'MOUSEMOVE' and event.ctrl
 
         # Pause Execution for repositioning Mouse
         if self.pauseExecution:
