@@ -36,16 +36,16 @@ def wrapMouseInWindow(context: bpy.types.Context, event: bpy.types.Event):
     width = context.area.width
     height = context.area.height
 
-    if event.mouse_x <= context.area.x:
-        context.window.cursor_warp(context.area.x + width - 1, event.mouse_y)
+    if event.mouse_x < context.area.x:
+        context.window.cursor_warp(context.area.x + width, event.mouse_y)
 
-    if event.mouse_x >= context.area.x + width:
+    if event.mouse_x > context.area.x + width:
         context.window.cursor_warp(context.area.x, event.mouse_y)
 
-    if event.mouse_y <= context.area.y:
+    if event.mouse_y < context.area.y:
         context.window.cursor_warp(event.mouse_x, context.area.y)
 
-    if event.mouse_y >= context.area.y + height:
+    if event.mouse_y > context.area.y + height:
         context.window.cursor_warp(event.mouse_x, context.area.y + height)
 
 
@@ -816,6 +816,7 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
         mouseWheelDelta = (mouseWheelDeltaUP + mouseWheelDeltaDOWN) * self.mouseWheelSensitivity
         delta: mathutils.Vector = mathutils.Vector(
             (event.mouse_x - event.mouse_prev_x + mouseWheelDelta, event.mouse_y - event.mouse_prev_y, 0.0))
+        print(delta)
 
         # Update Labels for Drawing
         self.lightSize, self.lightDistance, self.lightBrightness, self.lightAngle, self.lightPivot, self.lightOrbit, self.lightColor = GetLightValuesForDrawingLabels(
@@ -879,7 +880,7 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
             if lightObjectData.type not in {'AREA', 'SPOT', 'SUN'}:
                 return {'RUNNING_MODAL'}
             # Get Delta
-            step: mathutils.Vector = delta
+            step: mathutils.Vector = mathutils.Vector((delta.x,delta.y,delta.z))
             # Adjust Rate of Change
             if event.shift:
                 step *= self.slowChangeSpeedPercent
@@ -971,7 +972,8 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
                 lightObject.location = newPosition
 
         elif self.changeLightOrbit:
-            step: mathutils.Vector = delta * self.rotationSpeed
+            step: mathutils.Vector = mathutils.Vector((delta.x,delta.y,delta.z)) 
+            step *= self.rotationSpeed
             if event.shift:
                 step *= self.slowChangeSpeedPercent
             xMultiplicator = step.x
