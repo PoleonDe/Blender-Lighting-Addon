@@ -111,10 +111,10 @@ def vector_to_azimuth_elevation(vec: mathutils.Vector) -> mathutils.Vector:
 def lookAtRotation(vec: mathutils.Vector, facingAxis="") -> mathutils.Vector:
     """ specify look at facing Axis by string x,y,z or -x,-y,-z, its important to keep rotation Order as XYZ"""
     # Handle the Vector (0,0,1) Case and the (0,0,-1) Case
-    if vec == mathutils.Vector((0.0,0.0,1.0)):
-        return mathutils.Vector((0.0,-pi * 0.5,0.0))
-    if vec == mathutils.Vector((0.0,0.0,-1.0)):
-        return mathutils.Vector((0.0,pi * 0.5,0.0))
+    if vec == mathutils.Vector((0.0, 0.0, 1.0)):
+        return mathutils.Vector((0.0, -pi * 0.5, 0.0))
+    if vec == mathutils.Vector((0.0, 0.0, -1.0)):
+        return mathutils.Vector((0.0, pi * 0.5, 0.0))
 
     azimuthElevation = vector_to_azimuth_elevation(vec)
     if facingAxis == "x":
@@ -297,7 +297,8 @@ def SetLightIntensityByRatioClamped(lightObject: bpy.types.Object, changeRatePer
     SetLightIntensity(lightObject, GetLightIntensity(
         lightObject) * changeRatePercent)
 
-def GetLightSize(lightObject : bpy.types.Object) -> float:
+
+def GetLightSize(lightObject: bpy.types.Object) -> float:
     # Get lightSize based on Lamp Type
     lightObjectData: bpy.types.Light = lightObject.data
 
@@ -313,13 +314,15 @@ def GetLightSize(lightObject : bpy.types.Object) -> float:
     else:
         return -1.0
 
-def GetLightDistance(lightObject : bpy.types.Object) -> float:
+
+def GetLightDistance(lightObject: bpy.types.Object) -> float:
     # Get light Distance to pivot
-    pivot : mathutils.Vector =  GetLightPivot(lightObject)
-    distance : mathutils.Vector = lightObject.location - pivot
+    pivot: mathutils.Vector = GetLightPivot(lightObject)
+    distance: mathutils.Vector = lightObject.location - pivot
     return distance.magnitude
 
-def GetLightAngle(lightObject : bpy.types.Object) -> float:
+
+def GetLightAngle(lightObject: bpy.types.Object) -> float:
     # Get light Angle based on Lamp Type
     lightObjectData: bpy.types.Light = lightObject.data
 
@@ -335,11 +338,13 @@ def GetLightAngle(lightObject : bpy.types.Object) -> float:
     else:
         return -1.0
 
-def GetLightPivot(lightObject : bpy.types.Object) -> mathutils.Vector:
+
+def GetLightPivot(lightObject: bpy.types.Object) -> mathutils.Vector:
     # Get Light Pivot
     return mathutils.Vector((lightObject["pivotPoint"][0], lightObject["pivotPoint"][1], lightObject["pivotPoint"][2]))
 
-def GetLightColor(lightObject : bpy.types.Object) -> mathutils.Color:
+
+def GetLightColor(lightObject: bpy.types.Object) -> mathutils.Color:
     # Get light color based on Lamp Type
     lightObjectData: bpy.types.Light = lightObject.data
 
@@ -356,84 +361,131 @@ def GetLightColor(lightObject : bpy.types.Object) -> mathutils.Color:
         sunLightObjectData: bpy.types.SunLight = lightObject.data
         return sunLightObjectData.color
     else:
-        return mathutils.Color((1.0,1.0,1.0))
+        return mathutils.Color((1.0, 1.0, 1.0))
 
-def GetLightOrbit(lightObject : bpy.types.Object) -> tuple[float,float]:
-    pivotToLocation : mathutils.Vector =  GetLightPivot(lightObject) - lightObject.location
-    azimuthElevation : mathutils.Vector = lookAtRotation(pivotToLocation,"x")
-    return (azimuthElevation.y, azimuthElevation.z)
+
+def GetLightOrbit(lightObject: bpy.types.Object) -> tuple[float, float]:
+    lightObjectPosition: mathutils.Vector = lightObject.matrix_world.translation
+    pivotToLocation: mathutils.Vector = GetLightPivot(
+        lightObject) - lightObjectPosition
+    azimuthElevation: mathutils.Vector = lookAtRotation(pivotToLocation, "-x")
+    lightOrbit: tuple[float, float] = (azimuthElevation.y, azimuthElevation.z)
+    return lightOrbit
 
 # drawing Labels
 
 
 def drawOperationOptions(self, context):
-    activeOperationPos : mathutils.Vector = mathutils.Vector((80,350,0))
-    availableOperationPos : mathutils.Vector = mathutils.Vector((80,200,0))
-    font_id : int = 0
-    
+    activeOperationPos: mathutils.Vector = mathutils.Vector((80, 350, 0))
+    availableOperationPos: mathutils.Vector = mathutils.Vector((80, 200, 0))
+    font_id: int = 0
+
     currentOperation = [
-    { "Header": "Light Size", "Description": "Hold S move Mouse Left/Right", "Value" : self.lightSize ,"ActivationBool" : self.changeLightSize },
-    { "Header": "Light Distance", "Description": "Hold D move Mouse Left/Right", "Value" : self.lightDistance , "ActivationBool" : self.changeLightDistance },
-    { "Header": "Light Brightness", "Description": "Hold B move Mouse Left/Right", "Value" : self.lightBrightness , "ActivationBool" : self.changeLightBrightness },
-    { "Header": "Light Angle", "Description": "Hold A move Mouse Left/Right", "Value" : self.lightAngle , "ActivationBool" : self.changeLightAngle },
-    { "Header": "Light Pivot", "Description": "Hold CTRL reposition Light Origin", "Value" : self.lightPivot , "ActivationBool" : self.changeLightPivot },
-    { "Header": "Light Color", "Description": "Hold C move Mouse Left/Right = Hue , move Mouse Up/Down = Saturation", "Value" : self.lightColor , "ActivationBool" : self.changeLightColor },
-    { "Header": "Orbit", "Description": "Move Mouse Left/Right", "Value" : self.lightOrbit , "ActivationBool" : True } # self.changeLightOrbit
+        {"Header": "Light Size", "Description": "Hold S move Mouse Left/Right",
+            "Value": self.lightSize, "ActivationBool": self.changeLightSize},
+        {"Header": "Light Distance", "Description": "Hold D move Mouse Left/Right",
+            "Value": self.lightDistance, "ActivationBool": self.changeLightDistance},
+        {"Header": "Light Brightness", "Description": "Hold B move Mouse Left/Right",
+            "Value": self.lightBrightness, "ActivationBool": self.changeLightBrightness},
+        {"Header": "Light Angle", "Description": "Hold A move Mouse Left/Right",
+            "Value": self.lightAngle, "ActivationBool": self.changeLightAngle},
+        {"Header": "Light Pivot", "Description": "Hold CTRL reposition Light Origin",
+            "Value": self.lightPivot, "ActivationBool": self.changeLightPivot},
+        {"Header": "Light Color", "Description": "Hold C move Mouse Left/Right = Hue , move Mouse Up/Down = Saturation",
+            "Value": self.lightColor, "ActivationBool": self.changeLightColor},
+        {"Header": "Orbit", "Description": "Move Mouse Left/Right",
+            "Value": self.lightOrbit, "ActivationBool": True}  # self.changeLightOrbit
     ]
 
-    stopLoop : bool = False
+    stopLoop: bool = False
     # Draw current Operation Dictionary
     for operation in currentOperation:
         for key, val in operation.items():
             if operation['ActivationBool'] == True:
                 if key == 'Header':
-                    blf.color(font_id, 1.0, 1.0, 0.0, 1.0) # yellow
+                    blf.color(font_id, 1.0, 1.0, 0.0, 1.0)  # yellow
                     blf.size(font_id, 28, 72)
-                    blf.position(font_id,activeOperationPos.x,activeOperationPos.y,0.0)
-                    blf.draw(font_id,str(val))
+                    blf.position(font_id, activeOperationPos.x,
+                                 activeOperationPos.y, 0.0)
+                    blf.draw(font_id, str(val))
                 if key == 'Description':
-                    blf.color(font_id, 1.0, 1.0, 1.0, 0.5) # white 50 trans
-                    blf.size(font_id, 20, 72)   
-                    blf.position(font_id,activeOperationPos.x,activeOperationPos.y -32.0 ,0.0)
-                    blf.draw(font_id,str(val))
+                    blf.color(font_id, 1.0, 1.0, 1.0, 0.5)  # white 50 trans
+                    blf.size(font_id, 20, 72)
+                    blf.position(font_id, activeOperationPos.x,
+                                 activeOperationPos.y - 32.0, 0.0)
+                    blf.draw(font_id, str(val))
                 if key == 'Value':
-                    blf.color(font_id, 1.0, 0.8, 0.0, 1.0) # white 50 trans
-                    blf.size(font_id, 40, 72)   
-                    blf.position(font_id,activeOperationPos.x,activeOperationPos.y + 45.0 ,0.0)
-                    blf.draw(font_id,str(val))
+                    blf.color(font_id, 1.0, 0.8, 0.0, 1.0)  # white 50 trans
+                    blf.size(font_id, 36, 72)
+                    blf.position(font_id, activeOperationPos.x,
+                                 activeOperationPos.y + 45.0, 0.0)
+                    blf.draw(font_id, str(val))
                 stopLoop = True
         if stopLoop:
             break
 
     availableOperations = [
-    {"Key" : "C", "Description" : "Color", "AvailableLightType" : {'AREA', 'POINT' , 'SPOT' , 'SUN'}},
-    {"Key" : "A", "Description" : "Angle", "AvailableLightType" : {'AREA' , 'SPOT' , 'SUN'}},
-    {"Key" : "D", "Description" : "Distance", "AvailableLightType" : {'AREA', 'POINT' , 'SPOT' , 'SUN'}},
-    {"Key" : "B", "Description" : "Brightness", "AvailableLightType" : {'AREA', 'POINT' , 'SPOT' , 'SUN'}},
-    {"Key" : "S", "Description" : "Size", "AvailableLightType" : {'AREA', 'POINT' , 'SPOT'}},
-    {"Key" : "CTRL", "Description" : "Pivot", "AvailableLightType" : {'AREA', 'POINT' , 'SPOT' , 'SUN'}}
+        {"Key": "C", "Description": "Color", "AvailableLightType": {
+            'AREA', 'POINT', 'SPOT', 'SUN'}},
+        {"Key": "A", "Description": "Angle",
+            "AvailableLightType": {'AREA', 'SPOT', 'SUN'}},
+        {"Key": "D", "Description": "Distance",
+            "AvailableLightType": {'AREA', 'POINT', 'SPOT'}},
+        {"Key": "B", "Description": "Brightness",
+            "AvailableLightType": {'AREA', 'POINT', 'SPOT', 'SUN'}},
+        {"Key": "S", "Description": "Size",
+            "AvailableLightType": {'AREA', 'POINT', 'SPOT'}},
+        {"Key": "CTRL", "Description": "Pivot",
+            "AvailableLightType": {'AREA', 'POINT', 'SPOT', 'SUN'}}
     ]
 
-    blf.size(font_id, 16, 72) 
-    spacing : float = 18
-    counter : int = 0
+    blf.size(font_id, 16, 72)
+    spacing: float = 18
+    counter: int = 0
     # Draw available Operation Dictionary
     for operation in availableOperations:
         for key, val in operation.items():
             offset: float = counter * spacing
-            print(f"light type is {self.currentLightType}")
             if self.currentLightType in operation['AvailableLightType']:
                 if key == 'Key':
-                    blf.color(font_id, 1.0, 1.0, 0.5, 0.7) # white 50 trans
-                    blf.position(font_id,availableOperationPos.x,availableOperationPos.y - offset,0.0)
-                    blf.draw(font_id,str(val))
+                    blf.color(font_id, 1.0, 1.0, 0.5, 0.7)  # white 50 trans
+                    blf.position(font_id, availableOperationPos.x,
+                                 availableOperationPos.y - offset, 0.0)
+                    blf.draw(font_id, str(val))
                 if key == 'Description':
-                    blf.color(font_id, 1.0, 1.0, 1.0, 0.5) # white 50 trans
-                    blf.position(font_id,availableOperationPos.x + 80.0 ,availableOperationPos.y - offset ,0.0)
-                    blf.draw(font_id,str(val))
+                    blf.color(font_id, 1.0, 1.0, 1.0, 0.5)  # white 50 trans
+                    blf.position(font_id, availableOperationPos.x +
+                                 80.0, availableOperationPos.y - offset, 0.0)
+                    blf.draw(font_id, str(val))
         counter += 1
 
 
+def SetValuesForDrawing(lightObject: bpy.types.Object):
+    lightSize: str = '{0:.2f}'.format(
+        GetLightSize(lightObject)) + " m"  # 2 Decimals
+
+    lightDistance: str = '{0:.2f}'.format(
+        GetLightDistance(lightObject)) + " m"  # 2 Decimals
+
+    lightBrightness: str = '{0:.2f}'.format(
+        GetLightIntensity(lightObject)) + " w"  # 2 Decimals
+
+    lightAngle: str = '{0:.2f}'.format(degrees(
+        GetLightAngle(lightObject))) + " °"  # 2 Decimals
+
+    pivot: mathutils.Vector = GetLightPivot(lightObject)
+    lightPivot: str = '{0:.1f}'.format(
+        pivot.x) + " x " + '{0:.1f}'.format(pivot.y) + " y " + '{0:.1f}'.format(pivot.z) + " z "
+
+    orbit: tuple[float, float] = GetLightOrbit(lightObject)
+    lightOrbit: str = '{0:.1f}'.format(
+        degrees(orbit[0])) + " ° " + '{0:.1f}'.format(degrees(orbit[1]) + 180.0) + " °"
+
+    color: mathutils.Color = GetLightColor(lightObject).hsv
+    lightColor: str = '{0:.1f}'.format(
+        color[0] * 360.0) + " hue " + '{0:.0f}'.format(color[1] * 100.0) + " sat"
+
+    return lightSize, lightDistance, lightBrightness, lightAngle, lightPivot, lightOrbit, lightColor
 
 #################################################################
 ######################## OPERATORS ##############################
@@ -566,14 +618,13 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
     changeLightPivot: bool = False
     pauseExecution: bool = False
     # values for drawing
-    lightSize : float =  0.0
-    lightDistance : float = 0.0
-    lightBrightness : float = 0.0
-    lightAngle : float = 0.0
-    lightPivot : mathutils.Vector = mathutils.Vector((0.0,0.0,0.0))
-    lightColor : mathutils.Color = mathutils.Color((0.0,0.0,0.0))
-    lightOrbit : tuple[float,float] = (0.0,0.0)
-    
+    lightSize: str = ""
+    lightDistance: str = ""
+    lightBrightness: str = ""
+    lightAngle: str = ""
+    lightPivot: str = ""
+    lightOrbit: str = ""
+    lightColor: str = ""
 
     @ classmethod
     def poll(cls, context):
@@ -598,13 +649,8 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
         lightObjectData: bpy.types.Light = lightObject.data
         self.currentLightType = lightObjectData.type
         # Initialize Light Values
-        self.lightSize =  GetLightSize(lightObject)
-        self.lightDistance = GetLightDistance(lightObject)
-        self.lightBrightness = GetLightIntensity(lightObject)
-        self.lightAngle = GetLightAngle(lightObject)
-        self.lightPivot = GetLightPivot(lightObject)
-        self.lightColor = GetLightColor(lightObject)
-        self.lightOrbit = GetLightOrbit(lightObject)
+        self.lightSize, self.lightDistance, self.lightBrightness, self.lightAngle, self.lightPivot, self.lightOrbit, self.lightColor = SetValuesForDrawing(
+            lightObject)
         # when there is no custom attribute in the object.
         if "pivotPoint" not in lightObject:
             print("Property not found => created")
@@ -653,6 +699,10 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
         delta: mathutils.Vector = mathutils.Vector(
             (event.mouse_x - event.mouse_prev_x, event.mouse_y - event.mouse_prev_y, 0.0))
 
+        # Update Labels for Drawing
+        self.lightSize, self.lightDistance, self.lightBrightness, self.lightAngle, self.lightPivot, self.lightOrbit, self.lightColor = SetValuesForDrawing(
+            lightObject)
+
         # Set Input Enabeling Variables
         if event.type in {'LEFTMOUSE', 'RET'}:
             self.approveOperation = True
@@ -693,8 +743,6 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
             val: float = lightColor.hsv[2]
             # Set light Color
             lightColor.hsv = (hue, sat, val)
-            # Set Value for Label
-            self.lightColor = lightColor
 
         elif self.changeLightPivot:
             # hit, normal, best_original = raycast(context, event)
@@ -707,8 +755,6 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
                 lightObject["pivotPoint"] = (
                     hitlocation.x, hitlocation.y, hitlocation.z)
                 print('mousemove')
-                # Set Value for Label
-                self.lightPivot = mathutils.Vector((hitlocation.x,hitlocation.y,hitlocation.z))
 
         elif self.changeLightAngle:
             # return early
@@ -737,8 +783,6 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
                 sunLightObjectData: bpy.types.SunLight = lightObjectData
                 sunLightObjectData.angle = bl_math.clamp(
                     sunLightObjectData.angle * rateOfChangeX, 0.001, 180.0)
-            # Set Value for Label
-            self.lightAngle = GetLightAngle(lightObject)
 
         elif self.changeLightSize:
             lightObjectData: bpy.types.Light = lightObject.data
@@ -765,8 +809,6 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
                 spotLightObjectData: bpy.types.SpotLight = lightObject.data
                 spotLightObjectData.shadow_soft_size = bl_math.clamp(
                     spotLightObjectData.shadow_soft_size * rateOfChange, minimumIntensity, maximumIntensity)
-            # Set Value for Label
-            self.lightSize = GetLightSize(lightObject)
 
         elif self.changeLightBrightness:
             # minimum and maximum Light Intensity
@@ -781,8 +823,6 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
             rateOfChange: float = 1.0 + step
             # Set enery based on Lamp Type
             SetLightIntensityByRatioClamped(lightObject, rateOfChange)
-            # Set Value for Label
-            self.lightBrightness =  GetLightIntensity(lightObject)
 
         elif self.changeLightDistance:
             lightObjectData: bpy.types.Light = lightObject.data
@@ -812,8 +852,6 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
                 SetLightIntensity(lightObject, adjustedIntensity)
                 # Set Position
                 lightObject.location = newPosition
-            # Set Value for Label
-            self.lightDistance = GetLightDistance(lightObject)
 
         elif self.changeLightOrbit:
             step: mathutils.Vector = delta * self.rotationSpeed
@@ -824,8 +862,6 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
             # add delta rotation to existing rotation and clamp it
             self.pivotObject.rotation_euler = mathutils.Euler((self.pivotObject.rotation_euler.x, clamp(
                 self.pivotObject.rotation_euler.y - yMultiplicator, -pi/2.0, pi/2.0), self.pivotObject.rotation_euler.z + xMultiplicator))
-            # Set Value for Label
-            self.lightOrbit = GetLightOrbit(lightObject)
 
         elif self.approveOperation:
             # Remove Operation Labels
