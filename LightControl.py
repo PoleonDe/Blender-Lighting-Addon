@@ -332,17 +332,18 @@ def SetLightSize(lightObject: bpy.types.Object, lightSize: float):
 
 def GetLightDistance(lightObject: bpy.types.Object) -> float:
     # Get light Distance to pivot
-    pivot: mathutils.Vector = GetLightPivot(lightObject)
-    distance: mathutils.Vector = lightObject.location - pivot
+    pivotPosition: mathutils.Vector = GetLightPivot(lightObject)
+    distance: mathutils.Vector = lightObject.location - pivotPosition
     return distance.magnitude
 
 
 def SetLightDistance(lightObject: bpy.types.Object, lightDistance: float):
     '''Scales the location Vector based on Ratio between lightDistance Parameter and current Distance (CAUTION: only works when Parented to Pivot)'''
     # Set light Distance to pivot
-    currentDistance: float = GetLightDistance(lightObject)
-    scalingRatio: float = lightDistance / currentDistance
-    lightObject.location = lightObject.location * scalingRatio
+    # currentDistance: float = GetLightDistance(lightObject)
+    # scalingRatio: float = lightDistance / currentDistance
+    # print(f"scalingRatio {scalingRatio}")
+    lightObject.location = mathutils.Vector((lightDistance, 0.0, 0.0))
 
 
 def GetLightAngle(lightObject: bpy.types.Object) -> float:
@@ -382,7 +383,7 @@ def GetLightPivot(lightObject: bpy.types.Object) -> mathutils.Vector:
     return mathutils.Vector((lightObject["pivotPoint"][0], lightObject["pivotPoint"][1], lightObject["pivotPoint"][2]))
 
 
-def SetLightPivot(lightObject: bpy.types.Object, lightPivot: mathutils.Vector):
+def SetLightPivot(lightObject: bpy.types.Object, pivotObject: bpy.types.Object, lightPivot: mathutils.Vector):
     # Set Light Pivot
     lightObject["pivotPoint"] = (lightPivot.x, lightPivot.y, lightPivot.z)
 
@@ -425,32 +426,43 @@ def SetLightColor(lightObject: bpy.types.Object, lightColor: mathutils.Color):
         sunLightObjectData.color = lightColor
 
 
-def GetLightOrbit(lightObject: bpy.types.Object) -> tuple[float, float]:
+def GetLightOrbit(lightObject: bpy.types.Object) -> mathutils.Vector:
     lightObjectPosition: mathutils.Vector = lightObject.matrix_world.translation
     pivotToLocation: mathutils.Vector = GetLightPivot(
         lightObject) - lightObjectPosition
     azimuthElevation: mathutils.Vector = lookAtRotation(pivotToLocation, "-x")
-    lightOrbit: tuple[float, float] = (azimuthElevation.y, azimuthElevation.z)
-    return lightOrbit
+    return azimuthElevation
+
+
+def SetLightOrbit(pivotObject: bpy.types.Object, rotation: mathutils.Vector):
+    pivotObject.rotation_euler = rotation
 
 
 def GetLightValues(lightObject: bpy.types.Object):
-    lightPositionWorld = lightObject.matrix_world.translation
+    lightOrbit = GetLightOrbit(lightObject)
+    lightDistance = GetLightDistance(lightObject)
     lightSize = GetLightSize(lightObject)
     lightBrightness = GetLightBrightness(lightObject)
     lightAngle = GetLightAngle(lightObject)
     lightPivot = GetLightPivot(lightObject)
-    lightColor = GetLightColor(lightObject)
-    return lightPositionWorld, lightSize, lightBrightness, lightAngle, lightPivot, lightColor
+    tempColor = GetLightColor(lightObject)
+    lightColor = mathutils.Color((
+        tempColor.r, tempColor.g, tempColor.b))  # Make Copy of Color
+    print(
+        f"initial Values are . . . lightOrbit {lightOrbit}  lightDistance {lightDistance}  lightSize {lightSize}  lightBrightness {lightBrightness}  lightAngle {lightAngle}  lightPivot {lightPivot}  lightColor {lightColor} ")
+    return lightOrbit, lightDistance, lightSize, lightBrightness, lightAngle, lightPivot, lightColor
 
 
-def SetLightValues(lightObject: bpy.types.Object, lightPositionWorld: mathutils.Vector, lightSize: float, lightBrightness: float, lightAngle: float, lightPivot: mathutils.Vector, lightColor: mathutils.Color):
-    lightObject.location = lightPositionWorld
+def SetLightValues(lightObject: bpy.types.Object, pivotObject: bpy.types.Object, lightOrbit: mathutils.Vector, lightDistance: float, lightSize: float, lightBrightness: float, lightAngle: float, lightPivot: mathutils.Vector, lightColor: mathutils.Color):
+    SetLightOrbit(pivotObject, lightOrbit)
+    SetLightDistance(lightObject, lightDistance)
     SetLightSize(lightObject, lightSize)
     SetLightBrightness(lightObject, lightBrightness)
     SetLightAngle(lightObject, lightAngle)
-    SetLightPivot(lightObject, lightPivot)
+    SetLightPivot(lightObject, pivotObject, lightPivot)
     SetLightColor(lightObject, lightColor)
+    print(
+        f"Setting Values are . . . lightOrbit {lightOrbit}  lightDistance {lightDistance}  lightSize {lightSize}  lightBrightness {lightBrightness}  lightAngle {lightAngle}  lightPivot {lightPivot}  lightColor {lightColor} ")
 
 # drawing Labels
 
@@ -559,9 +571,9 @@ def GetLightValuesForDrawingLabels(lightObject: bpy.types.Object):
     lightPivot: str = '{0:.1f}'.format(
         pivot.x) + " x " + '{0:.1f}'.format(pivot.y) + " y " + '{0:.1f}'.format(pivot.z) + " z "
 
-    orbit: tuple[float, float] = GetLightOrbit(lightObject)
+    orbit: mathutils.Vector = GetLightOrbit(lightObject)
     lightOrbit: str = '{0:.1f}'.format(
-        degrees(orbit[0])) + " ° " + '{0:.1f}'.format(degrees(orbit[1]) + 180.0) + " °"
+        degrees(orbit[1])) + " ° " + '{0:.1f}'.format(degrees(orbit[2]) + 180.0) + " °"
 
     color: mathutils.Color = GetLightColor(lightObject).hsv
     lightColor: str = '{0:.1f}'.format(
@@ -709,8 +721,9 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
     lightOrbit: str = ""
     lightColor: str = ""
     # values for reverting
-    initialLightPositionWorld: mathutils.Vector = mathutils.Vector(
+    initialLightOrbit: mathutils.Vector = mathutils.Vector(
         (0.0, 0.0, 0.0))
+    initialLightDistance: float = 0.0
     initialLightSize: float = 0.0
     initialLightBrightness: float = 0.0
     initialLightAngle: float = 0.0
@@ -742,9 +755,6 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
         # Initialize Light Values for drawing
         self.lightSize, self.lightDistance, self.lightBrightness, self.lightAngle, self.lightPivot, self.lightOrbit, self.lightColor = GetLightValuesForDrawingLabels(
             lightObject)
-        # Initialize Initial Light Values for Reverting
-        self.initialLightPositionWorld, self.initialLightSize, self.initialLightBrightness, self.initialLightAngle, self.initialLightPivot, self.initialLightColor = GetLightValues(
-            lightObject)
         # when there is no custom attribute in the object.
         if "pivotPoint" not in lightObject:
             print("Property not found => created")
@@ -769,6 +779,9 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
         # rotate pivot
         rot = lookAtRotation(pivotToLight, "-x")
         self.pivotObject.rotation_euler = rot
+        # Initialize Initial Light Values for Reverting
+        self.initialLightOrbit, self.initialLightDistance, self.initialLightSize, self.initialLightBrightness, self.initialLightAngle, self.initialLightPivot, self.initialLightColor = GetLightValues(
+            lightObject)
 
         context.window_manager.modal_handler_add(self)
         return {'RUNNING_MODAL'}
@@ -969,11 +982,11 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
         elif self.cancelOperation:
             # Remove Operation Labels
             bpy.types.SpaceView3D.draw_handler_remove(self._handle, 'WINDOW')
+            # Reset Values
+            SetLightValues(lightObject, self.pivotObject, self.initialLightOrbit, self.initialLightDistance, self.initialLightSize,
+                           self.initialLightBrightness, self.initialLightAngle, self.initialLightPivot, self.initialLightColor)
             # Unparent
             UnparentAndKeepPositionRemoveParent(self.pivotObject, lightObject)
-            # Reset Values
-            SetLightValues(lightObject, self.initialLightPositionWorld, self.initialLightSize,
-                           self.initialLightBrightness, self.initialLightAngle, self.initialLightPivot, self.initialLightColor)
             # set Light as Active Object
             context.view_layer.objects.active = lightObject
             print('canceled adjusting Light')
