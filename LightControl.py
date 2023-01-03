@@ -19,7 +19,7 @@ bl_info = {
     "name": "Light Control",
     "description": "Tools that lets you easily create lights (Shift + E) and adjust lights ( when light active, E)",
     "author": "Malte Decker",
-    "version": (0, 5, 0),
+    "version": (0, 6, 0),
     "blender": (3, 3, 0),
     "location": "Shortcuts : Shift E and E",
     "category": "Lighting"
@@ -244,7 +244,7 @@ def UnparentAndKeepPositionRemoveParent(parent: bpy.types.Object, child: bpy.typ
 # Light Adjustment Functions
 
 
-def GetLightIntensity(lightObject: bpy.types.Object) -> float:
+def GetLightBrightness(lightObject: bpy.types.Object) -> float:
     # Get enery based on Lamp Type
     lightObjectData: bpy.types.Light = lightObject.data
 
@@ -264,7 +264,7 @@ def GetLightIntensity(lightObject: bpy.types.Object) -> float:
         return -1.0
 
 
-def SetLightIntensity(lightObject: bpy.types.Object, newIntensity: float):
+def SetLightBrightness(lightObject: bpy.types.Object, newIntensity: float):
     # minimum and maximum Light Intensity
     minimumIntensity: float = 0.001
     maximumIntensity: float = 10000000
@@ -293,8 +293,8 @@ def SetLightIntensity(lightObject: bpy.types.Object, newIntensity: float):
             sunLightObjectData.energy, minimumIntensity, maximumIntensity)
 
 
-def SetLightIntensityByRatioClamped(lightObject: bpy.types.Object, changeRatePercent: float):
-    SetLightIntensity(lightObject, GetLightIntensity(
+def SetLightBrightnessByRatioClamped(lightObject: bpy.types.Object, changeRatePercent: float):
+    SetLightBrightness(lightObject, GetLightBrightness(
         lightObject) * changeRatePercent)
 
 
@@ -315,11 +315,34 @@ def GetLightSize(lightObject: bpy.types.Object) -> float:
         return -1.0
 
 
+def SetLightSize(lightObject: bpy.types.Object, lightSize: float):
+    # Set lightSize based on Lamp Type
+    lightObjectData: bpy.types.Light = lightObject.data
+
+    if lightObjectData.type == 'AREA':
+        areaLightObjectData: bpy.types.AreaLight = lightObject.data
+        areaLightObjectData.size = lightSize
+    elif lightObjectData.type == 'POINT':
+        pointLightObjectData: bpy.types.PointLight = lightObject.data
+        pointLightObjectData.shadow_soft_size = lightSize
+    elif lightObjectData.type == 'SPOT':
+        spotLightObjectData: bpy.types.SpotLight = lightObject.data
+        spotLightObjectData.shadow_soft_size = lightSize
+
+
 def GetLightDistance(lightObject: bpy.types.Object) -> float:
     # Get light Distance to pivot
     pivot: mathutils.Vector = GetLightPivot(lightObject)
     distance: mathutils.Vector = lightObject.location - pivot
     return distance.magnitude
+
+
+def SetLightDistance(lightObject: bpy.types.Object, lightDistance: float):
+    '''Scales the location Vector based on Ratio between lightDistance Parameter and current Distance (CAUTION: only works when Parented to Pivot)'''
+    # Set light Distance to pivot
+    currentDistance: float = GetLightDistance(lightObject)
+    scalingRatio: float = lightDistance / currentDistance
+    lightObject.location = lightObject.location * scalingRatio
 
 
 def GetLightAngle(lightObject: bpy.types.Object) -> float:
@@ -339,9 +362,29 @@ def GetLightAngle(lightObject: bpy.types.Object) -> float:
         return -1.0
 
 
+def SetLightAngle(lightObject: bpy.types.Object, lightAngle: float):
+    # Set light Angle based on Lamp Type
+    lightObjectData: bpy.types.Light = lightObject.data
+
+    if lightObjectData.type == 'AREA':
+        areaLightObjectData: bpy.types.AreaLight = lightObject.data
+        areaLightObjectData.spread = lightAngle
+    elif lightObjectData.type == 'SPOT':
+        spotLightObjectData: bpy.types.SpotLight = lightObject.data
+        spotLightObjectData.spot_size = lightAngle
+    elif lightObjectData.type == 'SUN':
+        sunLightObjectData: bpy.types.SunLight = lightObject.data
+        sunLightObjectData.angle = lightAngle
+
+
 def GetLightPivot(lightObject: bpy.types.Object) -> mathutils.Vector:
     # Get Light Pivot
     return mathutils.Vector((lightObject["pivotPoint"][0], lightObject["pivotPoint"][1], lightObject["pivotPoint"][2]))
+
+
+def SetLightPivot(lightObject: bpy.types.Object, lightPivot: mathutils.Vector):
+    # Set Light Pivot
+    lightObject["pivotPoint"] = (lightPivot.x, lightPivot.y, lightPivot.z)
 
 
 def GetLightColor(lightObject: bpy.types.Object) -> mathutils.Color:
@@ -364,6 +407,24 @@ def GetLightColor(lightObject: bpy.types.Object) -> mathutils.Color:
         return mathutils.Color((1.0, 1.0, 1.0))
 
 
+def SetLightColor(lightObject: bpy.types.Object, lightColor: mathutils.Color):
+    # Set light color based on Lamp Type
+    lightObjectData: bpy.types.Light = lightObject.data
+
+    if lightObjectData.type == 'AREA':
+        areaLightObjectData: bpy.types.AreaLight = lightObject.data
+        areaLightObjectData.color = lightColor
+    elif lightObjectData.type == 'POINT':
+        pointLightObjectData: bpy.types.PointLight = lightObject.data
+        pointLightObjectData.color = lightColor
+    elif lightObjectData.type == 'SPOT':
+        spotLightObjectData: bpy.types.SpotLight = lightObject.data
+        spotLightObjectData.color = lightColor
+    elif lightObjectData.type == 'SUN':
+        sunLightObjectData: bpy.types.SunLight = lightObject.data
+        sunLightObjectData.color = lightColor
+
+
 def GetLightOrbit(lightObject: bpy.types.Object) -> tuple[float, float]:
     lightObjectPosition: mathutils.Vector = lightObject.matrix_world.translation
     pivotToLocation: mathutils.Vector = GetLightPivot(
@@ -371,6 +432,25 @@ def GetLightOrbit(lightObject: bpy.types.Object) -> tuple[float, float]:
     azimuthElevation: mathutils.Vector = lookAtRotation(pivotToLocation, "-x")
     lightOrbit: tuple[float, float] = (azimuthElevation.y, azimuthElevation.z)
     return lightOrbit
+
+
+def GetLightValues(lightObject: bpy.types.Object):
+    lightPositionWorld = lightObject.matrix_world.translation
+    lightSize = GetLightSize(lightObject)
+    lightBrightness = GetLightBrightness(lightObject)
+    lightAngle = GetLightAngle(lightObject)
+    lightPivot = GetLightPivot(lightObject)
+    lightColor = GetLightColor(lightObject)
+    return lightPositionWorld, lightSize, lightBrightness, lightAngle, lightPivot, lightColor
+
+
+def SetLightValues(lightObject: bpy.types.Object, lightPositionWorld: mathutils.Vector, lightSize: float, lightBrightness: float, lightAngle: float, lightPivot: mathutils.Vector, lightColor: mathutils.Color):
+    lightObject.location = lightPositionWorld
+    SetLightSize(lightObject, lightSize)
+    SetLightBrightness(lightObject, lightBrightness)
+    SetLightAngle(lightObject, lightAngle)
+    SetLightPivot(lightObject, lightPivot)
+    SetLightColor(lightObject, lightColor)
 
 # drawing Labels
 
@@ -462,7 +542,7 @@ def drawOperationOptions(self, context):
         counter += 1
 
 
-def SetValuesForDrawing(lightObject: bpy.types.Object):
+def GetLightValuesForDrawingLabels(lightObject: bpy.types.Object):
     lightSize: str = '{0:.2f}'.format(
         GetLightSize(lightObject)) + " m"  # 2 Decimals
 
@@ -470,7 +550,7 @@ def SetValuesForDrawing(lightObject: bpy.types.Object):
         GetLightDistance(lightObject)) + " m"  # 2 Decimals
 
     lightBrightness: str = '{0:.2f}'.format(
-        GetLightIntensity(lightObject)) + " w"  # 2 Decimals
+        GetLightBrightness(lightObject)) + " w"  # 2 Decimals
 
     lightAngle: str = '{0:.2f}'.format(degrees(
         GetLightAngle(lightObject))) + " °"  # 2 Decimals
@@ -488,6 +568,7 @@ def SetValuesForDrawing(lightObject: bpy.types.Object):
         color[0] * 360.0) + " hue " + '{0:.0f}'.format(color[1] * 100.0) + " sat"
 
     return lightSize, lightDistance, lightBrightness, lightAngle, lightPivot, lightOrbit, lightColor
+
 
 #################################################################
 ######################## OPERATORS ##############################
@@ -544,7 +625,7 @@ class LIGHTCONTROL_OT_add_light(bpy.types.Operator):
             lightIntensity = intensityByInverseSquareLaw(
                 60, 2.5, lightDistance)
         # Set Light Intensity
-        SetLightIntensity(lightObject, lightIntensity)
+        SetLightBrightness(lightObject, lightIntensity)
         # Position Light
         PositionLight(lightObject, mathutils.Vector(
             (hitnormal[0], hitnormal[1], hitnormal[2])), lightDistance)
@@ -627,6 +708,14 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
     lightPivot: str = ""
     lightOrbit: str = ""
     lightColor: str = ""
+    # values for reverting
+    initialLightPositionWorld: mathutils.Vector = mathutils.Vector(
+        (0.0, 0.0, 0.0))
+    initialLightSize: float = 0.0
+    initialLightBrightness: float = 0.0
+    initialLightAngle: float = 0.0
+    initialLightPivot: mathutils.Vector = mathutils.Vector((0.0, 0.0, 0.0))
+    initialLightColor: mathutils.Color = mathutils.Color((0.0, 0.0, 0.0))
 
     @ classmethod
     def poll(cls, context):
@@ -650,8 +739,11 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
         # Set current Light Type
         lightObjectData: bpy.types.Light = lightObject.data
         self.currentLightType = lightObjectData.type
-        # Initialize Light Values
-        self.lightSize, self.lightDistance, self.lightBrightness, self.lightAngle, self.lightPivot, self.lightOrbit, self.lightColor = SetValuesForDrawing(
+        # Initialize Light Values for drawing
+        self.lightSize, self.lightDistance, self.lightBrightness, self.lightAngle, self.lightPivot, self.lightOrbit, self.lightColor = GetLightValuesForDrawingLabels(
+            lightObject)
+        # Initialize Initial Light Values for Reverting
+        self.initialLightPositionWorld, self.initialLightSize, self.initialLightBrightness, self.initialLightAngle, self.initialLightPivot, self.initialLightColor = GetLightValues(
             lightObject)
         # when there is no custom attribute in the object.
         if "pivotPoint" not in lightObject:
@@ -702,7 +794,7 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
             (event.mouse_x - event.mouse_prev_x, event.mouse_y - event.mouse_prev_y, 0.0))
 
         # Update Labels for Drawing
-        self.lightSize, self.lightDistance, self.lightBrightness, self.lightAngle, self.lightPivot, self.lightOrbit, self.lightColor = SetValuesForDrawing(
+        self.lightSize, self.lightDistance, self.lightBrightness, self.lightAngle, self.lightPivot, self.lightOrbit, self.lightColor = GetLightValuesForDrawingLabels(
             lightObject)
 
         # Set Input Enabeling Variables
@@ -823,7 +915,7 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
             step *= self.energyGrowthPercent
             rateOfChange: float = 1.0 + step
             # Set enery based on Lamp Type
-            SetLightIntensityByRatioClamped(lightObject, rateOfChange)
+            SetLightBrightnessByRatioClamped(lightObject, rateOfChange)
 
         elif self.changeLightDistance:
             lightObjectData: bpy.types.Light = lightObject.data
@@ -845,12 +937,12 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
                 lightObject.location - pivotPoint).magnitude
             newLightDistanceToPivot: float = (
                 newPosition - pivotPoint).magnitude
-            adjustedIntensity: float = intensityByInverseSquareLaw(GetLightIntensity(
+            adjustedIntensity: float = intensityByInverseSquareLaw(GetLightBrightness(
                 lightObject), oldLightDistanceToPivot, newLightDistanceToPivot)
             # TODO: not the prettiest but for now it will do
             if newLightDistanceToPivot < 100.0:
                 # Adjust Light Intensity
-                SetLightIntensity(lightObject, adjustedIntensity)
+                SetLightBrightness(lightObject, adjustedIntensity)
                 # Set Position
                 lightObject.location = newPosition
 
@@ -879,6 +971,9 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
             bpy.types.SpaceView3D.draw_handler_remove(self._handle, 'WINDOW')
             # Unparent
             UnparentAndKeepPositionRemoveParent(self.pivotObject, lightObject)
+            # Reset Values
+            SetLightValues(lightObject, self.initialLightPositionWorld, self.initialLightSize,
+                           self.initialLightBrightness, self.initialLightAngle, self.initialLightPivot, self.initialLightColor)
             # set Light as Active Object
             context.view_layer.objects.active = lightObject
             print('canceled adjusting Light')
