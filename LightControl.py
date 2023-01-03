@@ -17,11 +17,12 @@ import blf
 
 bl_info = {
     "name": "Light Control",
-    "description": "Tools that lets you easily create and adjust lights",
+    "description": "Tools that lets you easily create lights (Shift + E) and adjust lights ( when light active, E)",
     "author": "Malte Decker",
-    "version": (0, 4, 0),
+    "version": (0, 5, 0),
     "blender": (3, 3, 0),
-    "location": "Shortcuts : CTRL + SHIFT + 1/2/3/4 and E",
+    "location": "Shortcuts : Shift E and E",
+    "category": "Lighting"
 }
 
 
@@ -109,6 +110,12 @@ def vector_to_azimuth_elevation(vec: mathutils.Vector) -> mathutils.Vector:
 
 def lookAtRotation(vec: mathutils.Vector, facingAxis="") -> mathutils.Vector:
     """ specify look at facing Axis by string x,y,z or -x,-y,-z, its important to keep rotation Order as XYZ"""
+    # Handle the Vector (0,0,1) Case and the (0,0,-1) Case
+    if vec == mathutils.Vector((0.0,0.0,1.0)):
+        return mathutils.Vector((0.0,-pi * 0.5,0.0))
+    if vec == mathutils.Vector((0.0,0.0,-1.0)):
+        return mathutils.Vector((0.0,pi * 0.5,0.0))
+
     azimuthElevation = vector_to_azimuth_elevation(vec)
     if facingAxis == "x":
         return mathutils.Vector((0.0, azimuthElevation.y + pi, azimuthElevation.z))
@@ -182,7 +189,6 @@ def raycastCursor(context: bpy.types.Context, mousepos: tuple, debug=False):  # 
 
 def CreateLight(context: bpy.types.Context, pivotPosition: mathutils.Vector, lightType: str) -> bpy.types.Object:
     """Creates a Light at position, Light types are POINT, SUN, SPOT, AREA"""
-    # TODO : change lightDistance based on Camera Distance to Object
     # TODO : Create an Area Light always as a Rectangle
     # TODO : Change the initial Brightness of the sun to 3
     # Create light datablock
@@ -295,43 +301,67 @@ def SetLightIntensityByRatioClamped(lightObject: bpy.types.Object, changeRatePer
 
 
 def drawOperationOptions(self, context):
-    font_id = 0
-    blf.color(font_id, 1.0, 1.0, 1.0, 1.0)
-    blf.size(font_id, 12, 72)
+    activeOperationPos : mathutils.Vector = mathutils.Vector((80,350,0))
+    availableOperationPos : mathutils.Vector = mathutils.Vector((80,200,0))
+    font_id : int = 0
+    
+    currentOperation = [
+    { "Header": "Light Size", "Description": "Hold S move Mouse Left/Right", "ActivationBool" : self.changeLightSize },
+    { "Header": "Light Distance", "Description": "Hold D move Mouse Left/Right", "ActivationBool" : self.changeLightDistance },
+    { "Header": "Light Brightness", "Description": "Hold B move Mouse Left/Right", "ActivationBool" : self.changeLightBrightness },
+    { "Header": "Light Angle", "Description": "Hold A move Mouse Left/Right", "ActivationBool" : self.changeLightAngle },
+    { "Header": "Light Pivot", "Description": "Hold CTRL reposition Light Origin", "ActivationBool" : self.changeLightPivot },
+    { "Header": "Light Color", "Description": "Hold C move Mouse Left/Right = Hue , move Mouse Up/Down = Saturation", "ActivationBool" : self.changeLightColor },
+    { "Header": "Orbit", "Description": "Move Mouse Left/Right", "ActivationBool" : True } # self.changeLightOrbit
+    ]
 
-    if self.changeLightSize:
-        blf.position(font_id, 15, 100, 0)
-        blf.draw(font_id, "Hold S      move Mouse Left/Right")
-    elif self.changeLightDistance:
-        blf.position(font_id, 15, 100, 0)
-        blf.draw(font_id, "Hold D      move Mouse Left/Right")
-    elif self.changeLightBrightness:
-        blf.position(font_id, 15, 100, 0)
-        blf.draw(font_id, "Hold B      move Mouse Left/Right")
-    elif self.changeLightAngle:
-        blf.position(font_id, 15, 100, 0)
-        blf.draw(font_id, "Hold A      move Mouse Left/Right")
-    elif self.changeLightPivot:
-        blf.position(font_id, 15, 100, 0)
-        blf.draw(font_id, "Hold CTRL    to reposition Light Origin")
-    elif self.changeLightColor:
-        blf.position(font_id, 15, 100, 0)
-        blf.draw(
-            font_id, "Hold C      move Mouse Left/Right = Hue , move Mouse Up/Down = Saturation")
-    elif self.changeLightOrbit:
-        # TODO :  Implement settings based on Light Type.
-        blf.position(font_id, 15, 100, 0)
-        blf.draw(font_id, "Color        C")
-        blf.position(font_id, 15, 115, 0)
-        blf.draw(font_id, "Angle        A")
-        blf.position(font_id, 15, 130, 0)
-        blf.draw(font_id, "Distance     D")
-        blf.position(font_id, 15, 145, 0)
-        blf.draw(font_id, "Brightness   B")
-        blf.position(font_id, 15, 160, 0)
-        blf.draw(font_id, "Size         S")
-        blf.position(font_id, 15, 175, 0)
-        blf.draw(font_id, "Orbit        Mousemove Horizontal/Vertical")
+    stopLoop : bool = False
+    # Draw current Operation Dictionary
+    for operation in currentOperation:
+        for key, val in operation.items():
+            if operation['ActivationBool'] == True:
+                if key == 'Header':
+                    blf.color(font_id, 1.0, 1.0, 0.0, 1.0) # yellow
+                    blf.size(font_id, 28, 72)
+                    blf.position(font_id,activeOperationPos.x,activeOperationPos.y,0.0)
+                    blf.draw(font_id,str(val))
+                if key == 'Description':
+                    blf.color(font_id, 1.0, 1.0, 1.0, 0.5) # white 50 trans
+                    blf.size(font_id, 20, 72)   
+                    blf.position(font_id,activeOperationPos.x,activeOperationPos.y -32.0 ,0.0)
+                    blf.draw(font_id,str(val))
+                stopLoop = True
+        if stopLoop:
+            break
+
+    availableOperations = [
+    {"Key" : "C", "Description" : "Color", "AvailableLightType" : {'AREA', 'POINT' , 'SPOT' , 'SUN'}},
+    {"Key" : "A", "Description" : "Angle", "AvailableLightType" : {'AREA' , 'SPOT' , 'SUN'}},
+    {"Key" : "D", "Description" : "Distance", "AvailableLightType" : {'AREA', 'POINT' , 'SPOT' , 'SUN'}},
+    {"Key" : "B", "Description" : "Brightness", "AvailableLightType" : {'AREA', 'POINT' , 'SPOT' , 'SUN'}},
+    {"Key" : "S", "Description" : "Size", "AvailableLightType" : {'AREA', 'POINT' , 'SPOT'}},
+    {"Key" : "CTRL", "Description" : "Pivot", "AvailableLightType" : {'AREA', 'POINT' , 'SPOT' , 'SUN'}}
+    ]
+
+    blf.size(font_id, 16, 72) 
+    spacing : float = 18
+    counter : int = 0
+    # Draw available Operation Dictionary
+    for operation in availableOperations:
+        for key, val in operation.items():
+            offset: float = counter * spacing
+            print(f"light type is {self.currentLightType}")
+            if self.currentLightType in operation['AvailableLightType']:
+                if key == 'Key':
+                    blf.color(font_id, 1.0, 1.0, 0.5, 0.7) # white 50 trans
+                    blf.position(font_id,availableOperationPos.x,availableOperationPos.y - offset,0.0)
+                    blf.draw(font_id,str(val))
+                if key == 'Description':
+                    blf.color(font_id, 1.0, 1.0, 1.0, 0.5) # white 50 trans
+                    blf.position(font_id,availableOperationPos.x + 80.0 ,availableOperationPos.y - offset ,0.0)
+                    blf.draw(font_id,str(val))
+        counter += 1
+
 
 
 #################################################################
@@ -347,7 +377,7 @@ class LIGHTCONTROL_OT_add_light(bpy.types.Operator):
     # Properties
     lightType: bpy.props.EnumProperty(items=[('POINT', 'Point Light', ''), ('AREA', 'Area Light', ''), ('SPOT', 'Spot Light', ''), (
         'SUN', 'Directional Light', '')], name="Light Types", description="Which Light Type should be spawned", default='AREA')
-    initialLightDistancePercent: float = 0.35  # range from 0.0 to 1.0
+    initialLightDistancePercent: float = 0.45  # range from 0.0 to 1.0
 
     def invoke(self, context: bpy.types.Context, event: bpy.types.Event):
         # Cancel if Light type doesnt work
@@ -442,6 +472,7 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
 
     # temporary storeage of pivotObjectID
     pivotObject: bpy.types.Object = None
+    currentLightType = None
     # settings for modal
     zoomSpeedPercent = 0.01
     rotationSpeed = 0.006
@@ -483,6 +514,9 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
             drawOperationOptions, args, 'WINDOW', 'POST_PIXEL')
         # set light Object as the active object
         lightObject = context.active_object
+        # Set current Light Type
+        lightObjectData: bpy.types.Light = lightObject.data
+        self.currentLightType = lightObjectData.type
         # when there is no custom attribute in the object.
         if "pivotPoint" not in lightObject:
             print("Property not found => created")
