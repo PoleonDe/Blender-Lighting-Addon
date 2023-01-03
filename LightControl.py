@@ -332,18 +332,18 @@ def SetLightSize(lightObject: bpy.types.Object, lightSize: float):
 
 def GetLightDistance(lightObject: bpy.types.Object) -> float:
     # Get light Distance to pivot
-    pivotPosition: mathutils.Vector = GetLightPivot(lightObject)
-    distance: mathutils.Vector = lightObject.location - pivotPosition
+    pivotPosition : mathutils.Vector = GetLightPivot(lightObject)
+    lightPosition : mathutils.Vector = mathutils.Vector((lightObject.location.x,lightObject.location.y,lightObject.location.z))
+    distance: mathutils.Vector = lightPosition - pivotPosition
     return distance.magnitude
 
 
 def SetLightDistance(lightObject: bpy.types.Object, lightDistance: float):
     '''Scales the location Vector based on Ratio between lightDistance Parameter and current Distance (CAUTION: only works when Parented to Pivot)'''
     # Set light Distance to pivot
-    # currentDistance: float = GetLightDistance(lightObject)
-    # scalingRatio: float = lightDistance / currentDistance
-    # print(f"scalingRatio {scalingRatio}")
-    lightObject.location = mathutils.Vector((lightDistance, 0.0, 0.0))
+    currentDistance: float = GetLightDistance(lightObject)
+    scalingRatio: float = lightDistance / currentDistance
+    lightObject.location *= scalingRatio
 
 
 def GetLightAngle(lightObject: bpy.types.Object) -> float:
@@ -380,6 +380,9 @@ def SetLightAngle(lightObject: bpy.types.Object, lightAngle: float):
 
 def GetLightPivot(lightObject: bpy.types.Object) -> mathutils.Vector:
     # Get Light Pivot
+    if "pivotPoint" not in lightObject:
+        lightObject["pivotPoint"] = (0.0, 0.0, 0.0)
+
     return mathutils.Vector((lightObject["pivotPoint"][0], lightObject["pivotPoint"][1], lightObject["pivotPoint"][2]))
 
 
@@ -426,20 +429,17 @@ def SetLightColor(lightObject: bpy.types.Object, lightColor: mathutils.Color):
         sunLightObjectData.color = lightColor
 
 
-def GetLightOrbit(lightObject: bpy.types.Object) -> mathutils.Vector:
-    lightObjectPosition: mathutils.Vector = lightObject.matrix_world.translation
-    pivotToLocation: mathutils.Vector = GetLightPivot(
-        lightObject) - lightObjectPosition
-    azimuthElevation: mathutils.Vector = lookAtRotation(pivotToLocation, "-x")
-    return azimuthElevation
+def GetLightOrbit(pivotObject: bpy.types.Object) -> mathutils.Vector:
+    rotation : mathutils.Euler = ((pivotObject.rotation_euler.x,pivotObject.rotation_euler.y,pivotObject.rotation_euler.z))
+    return rotation
 
 
 def SetLightOrbit(pivotObject: bpy.types.Object, rotation: mathutils.Vector):
     pivotObject.rotation_euler = rotation
 
 
-def GetLightValues(lightObject: bpy.types.Object):
-    lightOrbit = GetLightOrbit(lightObject)
+def GetLightValues(lightObject: bpy.types.Object , pivotObject: bpy.types.Object):
+    lightOrbit = GetLightOrbit(pivotObject)
     lightDistance = GetLightDistance(lightObject)
     lightSize = GetLightSize(lightObject)
     lightBrightness = GetLightBrightness(lightObject)
@@ -448,21 +448,17 @@ def GetLightValues(lightObject: bpy.types.Object):
     tempColor = GetLightColor(lightObject)
     lightColor = mathutils.Color((
         tempColor.r, tempColor.g, tempColor.b))  # Make Copy of Color
-    print(
-        f"initial Values are . . . lightOrbit {lightOrbit}  lightDistance {lightDistance}  lightSize {lightSize}  lightBrightness {lightBrightness}  lightAngle {lightAngle}  lightPivot {lightPivot}  lightColor {lightColor} ")
     return lightOrbit, lightDistance, lightSize, lightBrightness, lightAngle, lightPivot, lightColor
 
 
 def SetLightValues(lightObject: bpy.types.Object, pivotObject: bpy.types.Object, lightOrbit: mathutils.Vector, lightDistance: float, lightSize: float, lightBrightness: float, lightAngle: float, lightPivot: mathutils.Vector, lightColor: mathutils.Color):
-    SetLightOrbit(pivotObject, lightOrbit)
+    SetLightPivot(lightObject, pivotObject, lightPivot)
     SetLightDistance(lightObject, lightDistance)
+    SetLightOrbit(pivotObject, lightOrbit)
     SetLightSize(lightObject, lightSize)
     SetLightBrightness(lightObject, lightBrightness)
     SetLightAngle(lightObject, lightAngle)
-    SetLightPivot(lightObject, pivotObject, lightPivot)
     SetLightColor(lightObject, lightColor)
-    print(
-        f"Setting Values are . . . lightOrbit {lightOrbit}  lightDistance {lightDistance}  lightSize {lightSize}  lightBrightness {lightBrightness}  lightAngle {lightAngle}  lightPivot {lightPivot}  lightColor {lightColor} ")
 
 # drawing Labels
 
@@ -649,7 +645,7 @@ class LIGHTCONTROL_OT_add_light(bpy.types.Operator):
         # Go into Adjust Light mode
         print("invoke Adjust Light no Params")
         if bpy.ops.lightcontrol.adjust_light.poll():
-            bpy.ops.lightcontrol.adjust_light('INVOKE_DEFAULT')
+            bpy.ops.lightcontrol.adjust_light('INVOKE_DEFAULT')#, deleteOnCancelModal = True)
         return {'FINISHED'}
 
 
@@ -688,6 +684,11 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
     bl_label = "Adjust Light"
     bl_options = {'REGISTER', 'UNDO'}
 
+    # # Check if light needs to be deleted when action is canceled
+    # deleteOnCancelModal : bpy.props.BoolProperty(
+    #     name = "Delete Light On Modal Cancel",
+    #     description = "This property is used to check if light needs to be deleted if modal was canceled",
+    #     default = False)
     # temporary storeage of pivotObjectID
     pivotObject: bpy.types.Object = None
     currentLightType = None
@@ -781,7 +782,7 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
         self.pivotObject.rotation_euler = rot
         # Initialize Initial Light Values for Reverting
         self.initialLightOrbit, self.initialLightDistance, self.initialLightSize, self.initialLightBrightness, self.initialLightAngle, self.initialLightPivot, self.initialLightColor = GetLightValues(
-            lightObject)
+            lightObject,self.pivotObject)
 
         context.window_manager.modal_handler_add(self)
         return {'RUNNING_MODAL'}
@@ -985,10 +986,15 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
             # Reset Values
             SetLightValues(lightObject, self.pivotObject, self.initialLightOrbit, self.initialLightDistance, self.initialLightSize,
                            self.initialLightBrightness, self.initialLightAngle, self.initialLightPivot, self.initialLightColor)
+            # Update Matrices
+            context.view_layer.update()
             # Unparent
             UnparentAndKeepPositionRemoveParent(self.pivotObject, lightObject)
             # set Light as Active Object
             context.view_layer.objects.active = lightObject
+            # # delete light as well if True
+            # if self.deleteOnCancelModal:
+            #     bpy.data.objects.remove(lightObject, do_unlink=True)
             print('canceled adjusting Light')
             return {'CANCELLED'}
 
