@@ -17,9 +17,9 @@ import blf
 
 bl_info = {
     "name": "Light Control",
-    "description": "Tools that lets you easily create lights (Shift + E) and adjust lights ( when light active, E)",
+    "description": "Tools that lets you easily create lights (Shift + E) and adjust lights (when light active, E)",
     "author": "Malte Decker",
-    "version": (0, 6, 0),
+    "version": (0, 7, 0),
     "blender": (3, 3, 0),
     "location": "Shortcuts : Shift E and E",
     "category": "Lighting"
@@ -131,6 +131,12 @@ def lookAtRotation(vec: mathutils.Vector, facingAxis="") -> mathutils.Vector:
         return mathutils.Vector((0.0, azimuthElevation.y + pi * 0.5, azimuthElevation.z))
     else:
         return azimuthElevation
+
+def boolToFloat(v:bool) -> float:
+    if v:
+        return 1.0
+    else:
+        return 0.0
 
 # Raycast
 
@@ -700,6 +706,7 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
     sizeChangeSensitivity = 0.01
     hueChangeSensitivity = 0.0003
     saturationChangeSensitivity = 0.002
+    mouseWheelSensitivity = 10.0
     slowChangeSpeedPercent = 0.2
     emptyDisplaySize = 0.04
     # Input enablers for modal
@@ -804,8 +811,11 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
         self.pivotObject.empty_display_size = distance.magnitude * self.emptyDisplaySize
 
         # Calculate delta for later usage
+        mouseWheelDeltaUP = boolToFloat(event.type == 'MOUSEWHEELUP')
+        mouseWheelDeltaDOWN = -boolToFloat(event.type == 'MOUSEWHEELDOWN')
+        mouseWheelDelta = (mouseWheelDeltaUP + mouseWheelDeltaDOWN) * self.mouseWheelSensitivity
         delta: mathutils.Vector = mathutils.Vector(
-            (event.mouse_x - event.mouse_prev_x, event.mouse_y - event.mouse_prev_y, 0.0))
+            (event.mouse_x - event.mouse_prev_x + mouseWheelDelta, event.mouse_y - event.mouse_prev_y, 0.0))
 
         # Update Labels for Drawing
         self.lightSize, self.lightDistance, self.lightBrightness, self.lightAngle, self.lightPivot, self.lightOrbit, self.lightColor = GetLightValuesForDrawingLabels(
