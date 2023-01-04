@@ -19,7 +19,7 @@ bl_info = {
     "name": "Light Control",
     "description": "Tools that lets you easily create lights (Shift + E) and adjust lights (when light active, E)",
     "author": "Malte Decker",
-    "version": (0, 7, 0),
+    "version": (0, 8, 0),
     "blender": (3, 3, 0),
     "location": "Shortcuts : Shift E and E",
     "category": "Lighting"
@@ -561,7 +561,13 @@ def drawOperationOptions(self, context):
         {"Key": "B", "Description": "Brightness",
             "AvailableLightType": {'AREA', 'POINT', 'SPOT', 'SUN'}},
         {"Key": "S", "Description": "Size",
-            "AvailableLightType": {'AREA', 'POINT', 'SPOT'}}
+            "AvailableLightType": {'AREA', 'POINT', 'SPOT'}},
+
+        {"Key": "", "Description": "", "AvailableLightType": {
+            'AREA', 'POINT', 'SPOT', 'SUN'}},  # Blank Entry
+
+        {"Key": "V", "Description": "Toggle Gizmos",
+            "AvailableLightType": {'AREA', 'POINT', 'SPOT', 'SUN'}}
     ]
 
     blf.size(font_id, 16, 72)
@@ -727,6 +733,7 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
     #     default = False)
     # temporary storeage of pivotObjectID
     pivotObject: bpy.types.Object = None
+    activeSpace3D: bpy.types.SpaceView3D = None
     currentLightType = None
     # settings for modal
     zoomSpeedPercent = 0.01
@@ -749,7 +756,7 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
     changeLightAngle: bool = False
     changeLightColor: bool = False
     changeLightPivot: bool = False
-    pauseExecution: bool = False
+    toggleViewportVisibility: bool = False
     # values for drawing
     lightSize: str = ""
     lightDistance: str = ""
@@ -785,7 +792,12 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
         args = (self, context)
         self._handle = bpy.types.SpaceView3D.draw_handler_add(
             drawOperationOptions, args, 'WINDOW', 'POST_PIXEL')
-        # set light Object as the active object
+        # Set the current active Region3D as Reference
+        for area in bpy.context.screen.areas:
+            if area.type == 'VIEW_3D':
+                self.activeSpace3D = bpy.types.SpaceView3D(area.spaces.active)
+        self.toggleViewportVisibility = self.activeSpace3D.overlay.show_overlays and self.activeSpace3D.show_gizmo
+        # Set light Object as the active object
         lightObject = context.active_object
         # Set current Light Type
         lightObjectData: bpy.types.Light = lightObject.data
@@ -871,14 +883,14 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
             self.changeLightAngle = event.value == 'PRESS'
         if event.type == 'SPACE':
             self.changeLightOrbit = event.value == 'PRESS'
+        if event.type == 'V':
+            if event.value == 'PRESS':
+                self.toggleViewportVisibility = not self.toggleViewportVisibility
         self.changeLightPivot = event.type == 'MOUSEMOVE' and event.ctrl
 
-        # Pause Execution for repositioning Mouse
-        if self.pauseExecution:
-            return {'RUNNING_MODAL'}
-
         # Pass through Navigation
-        if event.type == 'MIDDLEMOUSE':  # allow view navigation
+        # allow view navigation, and collapsing the panels
+        if event.type in {'MIDDLEMOUSE', 'N', 'T'}:
             return {'PASS_THROUGH'}
 
         elif self.changeLightColor:
@@ -1058,6 +1070,11 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
             #     bpy.data.objects.remove(lightObject, do_unlink=True)
             print('canceled adjusting Light')
             return {'CANCELLED'}
+
+        # Set Visibility
+        if self.activeSpace3D:
+            self.activeSpace3D.overlay.show_overlays = self.toggleViewportVisibility
+            self.activeSpace3D.show_gizmo = self.toggleViewportVisibility
 
         # TODO : Change Pivot Point Size depending on Distance to Pivot
         # TODO : Give User the option to Single The Light Source
