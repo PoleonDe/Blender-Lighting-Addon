@@ -36,16 +36,16 @@ def wrapMouseInWindow(context: bpy.types.Context, event: bpy.types.Event):
     width = context.area.width
     height = context.area.height
 
-    if event.mouse_x < context.area.x:
-        context.window.cursor_warp(context.area.x + width, event.mouse_y)
+    if event.mouse_x <= context.area.x:
+        context.window.cursor_warp(context.area.x + width - 1, event.mouse_y)
 
-    if event.mouse_x > context.area.x + width:
+    if event.mouse_x >= context.area.x + width:
         context.window.cursor_warp(context.area.x, event.mouse_y)
 
-    if event.mouse_y < context.area.y:
+    if event.mouse_y <= context.area.y:
         context.window.cursor_warp(event.mouse_x, context.area.y)
 
-    if event.mouse_y > context.area.y + height:
+    if event.mouse_y >= context.area.y + height:
         context.window.cursor_warp(event.mouse_x, context.area.y + height)
 
 
@@ -132,7 +132,8 @@ def lookAtRotation(vec: mathutils.Vector, facingAxis="") -> mathutils.Vector:
     else:
         return azimuthElevation
 
-def boolToFloat(v:bool) -> float:
+
+def boolToFloat(v: bool) -> float:
     if v:
         return 1.0
     else:
@@ -338,8 +339,9 @@ def SetLightSize(lightObject: bpy.types.Object, lightSize: float):
 
 def GetLightDistance(lightObject: bpy.types.Object) -> float:
     # Get light Distance to pivot
-    pivotPosition : mathutils.Vector = GetLightPivot(lightObject)
-    lightPosition : mathutils.Vector = mathutils.Vector((lightObject.location.x,lightObject.location.y,lightObject.location.z))
+    pivotPosition: mathutils.Vector = GetLightPivot(lightObject)
+    lightPosition: mathutils.Vector = mathutils.Vector(
+        (lightObject.location.x, lightObject.location.y, lightObject.location.z))
     distance: mathutils.Vector = lightPosition - pivotPosition
     return distance.magnitude
 
@@ -436,7 +438,8 @@ def SetLightColor(lightObject: bpy.types.Object, lightColor: mathutils.Color):
 
 
 def GetLightOrbit(pivotObject: bpy.types.Object) -> mathutils.Vector:
-    rotation : mathutils.Euler = ((pivotObject.rotation_euler.x,pivotObject.rotation_euler.y,pivotObject.rotation_euler.z))
+    rotation: mathutils.Euler = (
+        (pivotObject.rotation_euler.x, pivotObject.rotation_euler.y, pivotObject.rotation_euler.z))
     return rotation
 
 
@@ -444,7 +447,7 @@ def SetLightOrbit(pivotObject: bpy.types.Object, rotation: mathutils.Vector):
     pivotObject.rotation_euler = rotation
 
 
-def GetLightValues(lightObject: bpy.types.Object , pivotObject: bpy.types.Object):
+def GetLightValues(lightObject: bpy.types.Object, pivotObject: bpy.types.Object):
     lightOrbit = GetLightOrbit(pivotObject)
     lightDistance = GetLightDistance(lightObject)
     lightSize = GetLightSize(lightObject)
@@ -651,7 +654,8 @@ class LIGHTCONTROL_OT_add_light(bpy.types.Operator):
         # Go into Adjust Light mode
         print("invoke Adjust Light no Params")
         if bpy.ops.lightcontrol.adjust_light.poll():
-            bpy.ops.lightcontrol.adjust_light('INVOKE_DEFAULT')#, deleteOnCancelModal = True)
+            # , deleteOnCancelModal = True)
+            bpy.ops.lightcontrol.adjust_light('INVOKE_DEFAULT')
         return {'FINISHED'}
 
 
@@ -789,7 +793,7 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
         self.pivotObject.rotation_euler = rot
         # Initialize Initial Light Values for Reverting
         self.initialLightOrbit, self.initialLightDistance, self.initialLightSize, self.initialLightBrightness, self.initialLightAngle, self.initialLightPivot, self.initialLightColor = GetLightValues(
-            lightObject,self.pivotObject)
+            lightObject, self.pivotObject)
 
         context.window_manager.modal_handler_add(self)
         return {'RUNNING_MODAL'}
@@ -813,7 +817,8 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
         # Calculate delta for later usage
         mouseWheelDeltaUP = boolToFloat(event.type == 'MOUSEWHEELUP')
         mouseWheelDeltaDOWN = -boolToFloat(event.type == 'MOUSEWHEELDOWN')
-        mouseWheelDelta = (mouseWheelDeltaUP + mouseWheelDeltaDOWN) * self.mouseWheelSensitivity
+        mouseWheelDelta = (mouseWheelDeltaUP +
+                           mouseWheelDeltaDOWN) * self.mouseWheelSensitivity
         delta: mathutils.Vector = mathutils.Vector(
             (event.mouse_x - event.mouse_prev_x + mouseWheelDelta, event.mouse_y - event.mouse_prev_y, 0.0))
         print(delta)
@@ -880,7 +885,8 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
             if lightObjectData.type not in {'AREA', 'SPOT', 'SUN'}:
                 return {'RUNNING_MODAL'}
             # Get Delta
-            step: mathutils.Vector = mathutils.Vector((delta.x,delta.y,delta.z))
+            step: mathutils.Vector = mathutils.Vector(
+                (delta.x, delta.y, delta.z))
             # Adjust Rate of Change
             if event.shift:
                 step *= self.slowChangeSpeedPercent
@@ -972,7 +978,8 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
                 lightObject.location = newPosition
 
         elif self.changeLightOrbit:
-            step: mathutils.Vector = mathutils.Vector((delta.x,delta.y,delta.z)) 
+            step: mathutils.Vector = mathutils.Vector(
+                (delta.x, delta.y, delta.z))
             step *= self.rotationSpeed
             if event.shift:
                 step *= self.slowChangeSpeedPercent
