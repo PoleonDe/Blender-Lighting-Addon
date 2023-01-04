@@ -683,6 +683,8 @@ class LIGHTCONTROL_OT_add_light(bpy.types.Operator):
             obj.select_set(False)
         lightObject.select_set(True)
         context.view_layer.objects.active = lightObject
+        # Set Flag on lightObject so it can be deleted if action canceled
+        lightObject['deleteOnCancel'] = True
         # Go into Adjust Light mode
         print("invoke Adjust Light no Params")
         if bpy.ops.lightcontrol.adjust_light.poll():
@@ -726,12 +728,7 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
     bl_label = "Adjust Light"
     bl_options = {'REGISTER', 'UNDO'}
 
-    # # Check if light needs to be deleted when action is canceled
-    # deleteOnCancelModal : bpy.props.BoolProperty(
-    #     name = "Delete Light On Modal Cancel",
-    #     description = "This property is used to check if light needs to be deleted if modal was canceled",
-    #     default = False)
-    # temporary storeage of pivotObjectID
+    # temporary storeage
     pivotObject: bpy.types.Object = None
     activeSpace3D: bpy.types.SpaceView3D = None
     currentLightType = None
@@ -1050,6 +1047,10 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
             UnparentAndKeepPositionRemoveParent(self.pivotObject, lightObject)
             # set Light as Active Object
             context.view_layer.objects.active = lightObject
+            # delete the Set Light Tag if its there
+            # TODO : implement TRY CATCH
+            if lightObject['deleteOnCancel']:
+                del lightObject['deleteOnCancel']
             print('finished adjusting Light')
             return {'FINISHED'}
 
@@ -1065,9 +1066,10 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
             UnparentAndKeepPositionRemoveParent(self.pivotObject, lightObject)
             # set Light as Active Object
             context.view_layer.objects.active = lightObject
-            # # delete light as well if True
-            # if self.deleteOnCancelModal:
-            #     bpy.data.objects.remove(lightObject, do_unlink=True)
+            # delete light as well if True
+            # TODO : implement TRY CATCH
+            if lightObject['deleteOnCancel']:
+                bpy.data.objects.remove(lightObject, do_unlink=True)
             print('canceled adjusting Light')
             return {'CANCELLED'}
 
@@ -1077,9 +1079,7 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
             self.activeSpace3D.show_gizmo = self.toggleViewportVisibility
 
         # TODO : Change Pivot Point Size depending on Distance to Pivot
-        # TODO : Give User the option to Single The Light Source
-        # TODO : Give User the option to have Light Groups
-        # TODO : Give User the option to cycle Light Groups
+
         return {'RUNNING_MODAL'}
 
 
