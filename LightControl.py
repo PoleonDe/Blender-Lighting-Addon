@@ -32,21 +32,34 @@ bl_info = {
 
 
 # Wrap Cursor when its at first or last pixel of window
-def wrapMouseInWindow(context: bpy.types.Context, event: bpy.types.Event):
+def wrapMouseInWindow(context: bpy.types.Context, event: bpy.types.Event) -> mathutils.Vector:
     width = context.area.width
     height = context.area.height
 
-    if event.mouse_x <= context.area.x:
+    delta: mathutils.Vector = mathutils.Vector(
+        (event.mouse_x - event.mouse_prev_x, event.mouse_y - event.mouse_prev_y, 0.0))
+
+    if event.mouse_x <= context.area.x:  # + 1 and delta.x < 0.0:
         context.window.cursor_warp(context.area.x + width - 1, event.mouse_y)
+        print(f"moved, offset is width {width}")
+        return mathutils.Vector((width, 0.0, 0.0))
 
-    if event.mouse_x >= context.area.x + width:
-        context.window.cursor_warp(context.area.x, event.mouse_y)
+    if event.mouse_x >= context.area.x + width:  # and delta.x > 0.0:
+        context.window.cursor_warp(context.area.x + 1, event.mouse_y)
+        print(f"moved, offset is width {-width}")
+        return mathutils.Vector((-width, 0.0, 0.0))
 
-    if event.mouse_y <= context.area.y:
-        context.window.cursor_warp(event.mouse_x, context.area.y)
+    if event.mouse_y <= context.area.y:  # and delta.y < 0.0:
+        context.window.cursor_warp(event.mouse_x, context.area.y + 1)
+        print(f"moved, offset is height {-height}")
+        return mathutils.Vector((0.0, -height, 0.0))
 
-    if event.mouse_y >= context.area.y + height:
-        context.window.cursor_warp(event.mouse_x, context.area.y + height)
+    if event.mouse_y >= context.area.y + height:  # and delta.y > 0.0:
+        context.window.cursor_warp(event.mouse_x, context.area.y + height - 1)
+        print(f"moved, offset is height {height}")
+        return mathutils.Vector((0.0, height, 0.0))
+
+    return mathutils.Vector((0.0, 0.0, 0.0))
 
 
 def resetCursorToCenterRegion(context: bpy.types.Context):
@@ -437,10 +450,14 @@ def SetLightColor(lightObject: bpy.types.Object, lightColor: mathutils.Color):
         sunLightObjectData.color = lightColor
 
 
-def GetLightOrbit(pivotObject: bpy.types.Object) -> mathutils.Vector:
-    rotation: mathutils.Euler = (
-        (pivotObject.rotation_euler.x, pivotObject.rotation_euler.y, pivotObject.rotation_euler.z))
-    return rotation
+def GetLightOrbit(pivotObject: bpy.types.Object) -> mathutils.Euler:
+    if pivotObject:
+        rotation: mathutils.Euler = (
+            (pivotObject.rotation_euler.x, pivotObject.rotation_euler.y, pivotObject.rotation_euler.z))
+        return rotation
+    else:
+        print("Cant get Light Orbit, there is no Object")
+        return mathutils.Euler((0.0, 0.0, 0.0))
 
 
 def SetLightOrbit(pivotObject: bpy.types.Object, rotation: mathutils.Vector):
@@ -486,9 +503,9 @@ def drawOperationOptions(self, context):
             "Value": self.lightBrightness, "ActivationBool": self.changeLightBrightness},
         {"Header": "Light Angle", "Description": "Hold A move Mouse Left/Right",
             "Value": self.lightAngle, "ActivationBool": self.changeLightAngle},
-        {"Header": "Light Pivot", "Description": "Hold CTRL reposition Light Origin",
+        {"Header": "Light Pivot", "Description": "Hold CTRL or CTRL+SHIFT or CTRL+ALT ",
             "Value": self.lightPivot, "ActivationBool": self.changeLightPivot},
-        {"Header": "Light Color", "Description": "Hold C move Mouse Left/Right = Hue , move Mouse Up/Down = Saturation",
+        {"Header": "Light Color", "Description": "Hold C move Mouse Up/Down (Saturation) and Left/Right (Hue)",
             "Value": self.lightColor, "ActivationBool": self.changeLightColor},
         {"Header": "Orbit", "Description": "Move Mouse Left/Right",
             "Value": self.lightOrbit, "ActivationBool": self.changeLightOrbit}
@@ -499,6 +516,12 @@ def drawOperationOptions(self, context):
     for operation in currentOperation:
         for key, val in operation.items():
             if operation['ActivationBool'] == True:
+                if key == 'Value':
+                    blf.color(font_id, 1.0, 1.0, 1.0, 1.0)  # white
+                    blf.size(font_id, 32, 72)
+                    blf.position(font_id, activeOperationPos.x,
+                                 activeOperationPos.y + 60, 0.0)
+                    blf.draw(font_id, str(val))
                 if key == 'Header':
                     blf.color(font_id, 1.0, 1.0, 0.0, 1.0)  # yellow
                     blf.size(font_id, 28, 72)
@@ -506,17 +529,16 @@ def drawOperationOptions(self, context):
                                  activeOperationPos.y, 0.0)
                     blf.draw(font_id, str(val))
                 if key == 'Description':
+                    lineSpacing: float = 24.0
+                    baseOffset: float = 8.0
                     blf.color(font_id, 1.0, 1.0, 1.0, 0.5)  # white 50 trans
-                    blf.size(font_id, 20, 72)
+                    blf.size(font_id, 18, 72)
                     blf.position(font_id, activeOperationPos.x,
-                                 activeOperationPos.y - 32.0, 0.0)
+                                 activeOperationPos.y - lineSpacing - baseOffset, 0.0)
                     blf.draw(font_id, str(val))
-                if key == 'Value':
-                    blf.color(font_id, 1.0, 0.8, 0.0, 1.0)  # white 50 trans
-                    blf.size(font_id, 36, 72)
                     blf.position(font_id, activeOperationPos.x,
-                                 activeOperationPos.y + 45.0, 0.0)
-                    blf.draw(font_id, str(val))
+                                 activeOperationPos.y - (lineSpacing * 2.0) - baseOffset, 0.0)
+                    blf.draw(font_id, "Hold Shift for Slow Operation")
                 stopLoop = True
         if stopLoop:
             break
@@ -526,6 +548,10 @@ def drawOperationOptions(self, context):
             'AREA', 'POINT', 'SPOT', 'SUN'}},
         {"Key": "CTRL", "Description": "Pivot",
             "AvailableLightType": {'AREA', 'POINT', 'SPOT', 'SUN'}},
+
+        {"Key": "", "Description": "",
+            "AvailableLightType": {'AREA', 'POINT', 'SPOT', 'SUN'}},  # Blank Entry
+
         {"Key": "C", "Description": "Color", "AvailableLightType": {
             'AREA', 'POINT', 'SPOT', 'SUN'}},
         {"Key": "A", "Description": "Angle",
@@ -559,7 +585,7 @@ def drawOperationOptions(self, context):
         counter += 1
 
 
-def GetLightValuesForDrawingLabels(lightObject: bpy.types.Object):
+def GetLightValuesForDrawingLabels(lightObject: bpy.types.Object, pivotObject: bpy.types.Object):
     lightSize: str = '{0:.2f}'.format(
         GetLightSize(lightObject)) + " m"  # 2 Decimals
 
@@ -576,9 +602,9 @@ def GetLightValuesForDrawingLabels(lightObject: bpy.types.Object):
     lightPivot: str = '{0:.1f}'.format(
         pivot.x) + " x " + '{0:.1f}'.format(pivot.y) + " y " + '{0:.1f}'.format(pivot.z) + " z "
 
-    orbit: mathutils.Vector = GetLightOrbit(lightObject)
+    orbit: mathutils.Euler = GetLightOrbit(pivotObject)
     lightOrbit: str = '{0:.1f}'.format(
-        degrees(orbit[1])) + " ° " + '{0:.1f}'.format(degrees(orbit[2]) + 180.0) + " °"
+        degrees(orbit[1])) + " ° " + '{0:.1f}'.format((degrees(orbit[2]) + 180.0) % 360.0) + " °"
 
     color: mathutils.Color = GetLightColor(lightObject).hsv
     lightColor: str = '{0:.1f}'.format(
@@ -710,7 +736,7 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
     sizeChangeSensitivity = 0.01
     hueChangeSensitivity = 0.0003
     saturationChangeSensitivity = 0.002
-    mouseWheelSensitivity = 10.0
+    mouseWheelSensitivity = 20.0
     slowChangeSpeedPercent = 0.2
     emptyDisplaySize = 0.04
     # Input enablers for modal
@@ -766,7 +792,7 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
         self.currentLightType = lightObjectData.type
         # Initialize Light Values for drawing
         self.lightSize, self.lightDistance, self.lightBrightness, self.lightAngle, self.lightPivot, self.lightOrbit, self.lightColor = GetLightValuesForDrawingLabels(
-            lightObject)
+            lightObject, self.pivotObject)
         # when there is no custom attribute in the object.
         if "pivotPoint" not in lightObject:
             print("Property not found => created")
@@ -803,29 +829,30 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
         context.area.tag_redraw()
 
         # wrap mouse movement so it stays in window
-        wrapMouseInWindow(context, event)
+        deltaOffset: mathutils.Vector = wrapMouseInWindow(context, event)
 
         # save the active object
         lightObject: bpy.types.Object = context.active_object
 
         # Set pivot empty display size based on distance
         r3d = context.area.spaces.active.region_3d
-        distance: mathutils.Vector = self.pivotObject.location - \
+        newDistance: mathutils.Vector = self.pivotObject.location - \
             r3d.view_matrix.inverted().translation
-        self.pivotObject.empty_display_size = distance.magnitude * self.emptyDisplaySize
+        self.pivotObject.empty_display_size = newDistance.magnitude * self.emptyDisplaySize
 
         # Calculate delta for later usage
-        mouseWheelDeltaUP = boolToFloat(event.type == 'MOUSEWHEELUP')
-        mouseWheelDeltaDOWN = -boolToFloat(event.type == 'MOUSEWHEELDOWN')
-        mouseWheelDelta = (mouseWheelDeltaUP +
-                           mouseWheelDeltaDOWN) * self.mouseWheelSensitivity
+        mouseWheelDeltaUP = boolToFloat(event.type == 'WHEELUPMOUSE')
+        mouseWheelDeltaDOWN = -boolToFloat(event.type == 'WHEELDOWNMOUSE')
+        mouseWheelDelta: mathutils.Vector = mathutils.Vector(((mouseWheelDeltaUP +
+                                                               mouseWheelDeltaDOWN) * self.mouseWheelSensitivity, 0.0, 0.0))
         delta: mathutils.Vector = mathutils.Vector(
-            (event.mouse_x - event.mouse_prev_x + mouseWheelDelta, event.mouse_y - event.mouse_prev_y, 0.0))
-        print(delta)
+            (event.mouse_x - event.mouse_prev_x, event.mouse_y - event.mouse_prev_y, 0.0))
+        delta += mouseWheelDelta
+        delta += deltaOffset
 
         # Update Labels for Drawing
         self.lightSize, self.lightDistance, self.lightBrightness, self.lightAngle, self.lightPivot, self.lightOrbit, self.lightColor = GetLightValuesForDrawingLabels(
-            lightObject)
+            lightObject, self.pivotObject)
 
         # Set Input Enabeling Variables
         if event.type in {'LEFTMOUSE', 'RET'}:
@@ -872,12 +899,27 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
             hitobj, hitlocation, hitnormal, hitindex, hitdistance = raycastCursor(
                 context, mousepos=(event.mouse_region_x, event.mouse_region_y), debug=False)
             if hitobj:
-                self.pivotObject.location = hitlocation
-                # TODO : Implement Special case, normal is 0,0,1
-                self.pivotObject.rotation_euler = lookAtRotation(hitnormal)
-                lightObject["pivotPoint"] = (
-                    hitlocation.x, hitlocation.y, hitlocation.z)
-                print('mousemove')
+                if event.shift:  # only move pivot
+                    lightWorldPos: mathutils.Vector = lightObject.matrix_world.to_translation()
+                    lightToPivot: mathutils.Vector = lightWorldPos - self.pivotObject.location
+                    lightToHit: mathutils.Vector = lightWorldPos - hitlocation
+                    prevDistance: float = lightToPivot.magnitude
+                    newDistance: float = lightToHit.magnitude
+                    self.pivotObject.location = hitlocation
+                    self.pivotObject.rotation_euler = lookAtRotation(
+                        lightToHit)
+                    context.view_layer.update()
+                    scalingRatio: float = newDistance / prevDistance
+                    lightObject.location *= scalingRatio
+                    lightObject["pivotPoint"] = (
+                        hitlocation.x, hitlocation.y, hitlocation.z)
+                else:  # move pivot and light object
+                    self.pivotObject.location = hitlocation
+                    lightObject["pivotPoint"] = (
+                        hitlocation.x, hitlocation.y, hitlocation.z)
+                if event.alt:  # rotate Pivot
+                    self.pivotObject.rotation_euler = lookAtRotation(
+                        hitnormal, "-x")
 
         elif self.changeLightAngle:
             # return early
