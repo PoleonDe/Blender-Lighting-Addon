@@ -635,6 +635,17 @@ class LIGHTCONTROL_OT_add_light(bpy.types.Operator):
     initialLightDistancePercent: float = 0.45  # range from 0.0 to 1.0
 
     def invoke(self, context: bpy.types.Context, event: bpy.types.Event):
+        # Addon Preferences
+        preferences = context.preferences
+        addon_prefs = preferences.addons[__name__].preferences
+        if self.lightType == 'AREA':
+            addon_prefs.areaLightCountSpawned += 1
+        elif self.lightType == 'POINT':
+            addon_prefs.pointLightCountSpawned += 1
+        elif self.lightType == 'SPOT':
+            addon_prefs.spotLightCountSpawned += 1
+        elif self.lightType == 'SUN':
+            addon_prefs.sunLightCountSpawned += 1
         # Cancel if Light type doesnt work
         if self.lightType not in {'AREA', 'POINT', 'SPOT', 'SUN'}:
             print("Couldnt add this lighttype.")
@@ -928,19 +939,19 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
                     self.pivotObject.location = hitlocation
                     lightObject["pivotPoint"] = (
                         hitlocation.x, hitlocation.y, hitlocation.z)
-                # if event.alt:  # rotate Pivot, normal of Object
-                #     self.pivotObject.rotation_euler = lookAtRotation(
-                #         hitnormal, "-x")
-                if event.alt:
-                    cameraPosition : mathutils.Vector = self.activeRegion3D.view_matrix.inverted().translation
-                    camToHit : mathutils.Vector = hitlocation - cameraPosition
-                    reflection : mathutils.Vector = camToHit.reflect(hitnormal)
-                    print(f"camtohit {camToHit}")
-                    print(f"reflection {reflection}")
-                    print(f"hitnormal {hitnormal}")
-                    self.pivotObject.rotation_euler = lookAtRotation(reflection, "-x")
-                    #self.activeRegion3D.view_matrix = view_matrix # Change View matrix.
-                    #context.space_data.region_3d.view_perspective = 'CAMERA' # Set as Cam
+                if event.alt:  # rotate Pivot, normal of Object
+                    self.pivotObject.rotation_euler = lookAtRotation(
+                        hitnormal, "-x")
+                # if event.alt: # rotate Pivot, reflected view vector
+                #     cameraPosition : mathutils.Vector = self.activeRegion3D.view_matrix.inverted().translation
+                #     camToHit : mathutils.Vector = hitlocation - cameraPosition
+                #     reflection : mathutils.Vector = camToHit.reflect(hitnormal)
+                #     print(f"camtohit {camToHit}")
+                #     print(f"reflection {reflection}")
+                #     print(f"hitnormal {hitnormal}")
+                #     self.pivotObject.rotation_euler = lookAtRotation(reflection, "-x")
+                #     #self.activeRegion3D.view_matrix = view_matrix # Change View matrix.
+                #     #context.space_data.region_3d.view_perspective = 'CAMERA' # Set as Cam
 
         elif self.changeLightAngle:
             # return early
@@ -1092,6 +1103,36 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
 
         return {'RUNNING_MODAL'}
 
+class LIGHTCONTROL_Addon_Preferences(bpy.types.AddonPreferences):
+    # this must match the add-on name, use '__package__'
+    # when defining this in a submodule of a python package.
+    bl_idname = __name__
+
+    areaLightCountSpawned: bpy.props.IntProperty(
+        name="Spawned Area Lights",
+        default=0,
+    )
+    pointLightCountSpawned: bpy.props.IntProperty(
+    name="Spawned Point Lights",
+    default=0,
+    )
+    sunLightCountSpawned: bpy.props.IntProperty(
+    name="Spawned Sun Lights",
+    default=0,
+    )
+    spotLightCountSpawned: bpy.props.IntProperty(
+    name="Spawned Spot Lights",
+    default=0,
+    )
+
+    def draw(self, context):
+        layout = self.layout
+        layout.label(text="Spawned Area Lights " + str(self.areaLightCountSpawned))
+        layout.label(text="Spawned Point Lights " + str(self.pointLightCountSpawned))
+        layout.label(text="Spawned Sun Lights " + str(self.sunLightCountSpawned))
+        layout.label(text="Spawned Spot Lights " + str(self.spotLightCountSpawned))
+        #layout.prop(self, "areaLightCountSpawned")
+
 
 # class LIGHTCONTROL_OT_create_world_setup(bpy.types.Operator):
 #     bl_idname = "lightcontrol.create_world_setup"
@@ -1133,7 +1174,7 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
 #################################################################
 addon_keymaps = []
 classes = (LIGHTCONTROL_OT_add_light, LIGHTCONTROL_MT_add_light_pie_menu,
-           LIGHTCONTROL_OT_add_light_pie_menu_call, LIGHTCONTROL_OT_adjust_light)
+           LIGHTCONTROL_OT_add_light_pie_menu_call, LIGHTCONTROL_OT_adjust_light, LIGHTCONTROL_Addon_Preferences)
 
 
 def register():
