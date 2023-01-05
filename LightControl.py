@@ -731,6 +731,7 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
     # temporary storeage
     pivotObject: bpy.types.Object = None
     activeSpace3D: bpy.types.SpaceView3D = None
+    activeRegion3D : bpy.types.RegionView3D = None
     currentLightType = None
     # settings for modal
     zoomSpeedPercent = 0.01
@@ -793,6 +794,7 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
         for area in bpy.context.screen.areas:
             if area.type == 'VIEW_3D':
                 self.activeSpace3D = bpy.types.SpaceView3D(area.spaces.active)
+                self.activeRegion3D = bpy.types.RegionView3D(area.spaces[0].region_3d)
         self.toggleViewportVisibility = self.activeSpace3D.overlay.show_overlays and self.activeSpace3D.show_gizmo
         # Set light Object as the active object
         lightObject = context.active_object
@@ -926,9 +928,19 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
                     self.pivotObject.location = hitlocation
                     lightObject["pivotPoint"] = (
                         hitlocation.x, hitlocation.y, hitlocation.z)
-                if event.alt:  # rotate Pivot
-                    self.pivotObject.rotation_euler = lookAtRotation(
-                        hitnormal, "-x")
+                # if event.alt:  # rotate Pivot, normal of Object
+                #     self.pivotObject.rotation_euler = lookAtRotation(
+                #         hitnormal, "-x")
+                if event.alt:
+                    cameraPosition : mathutils.Vector = self.activeRegion3D.view_matrix.inverted().translation
+                    camToHit : mathutils.Vector = hitlocation - cameraPosition
+                    reflection : mathutils.Vector = camToHit.reflect(hitnormal)
+                    print(f"camtohit {camToHit}")
+                    print(f"reflection {reflection}")
+                    print(f"hitnormal {hitnormal}")
+                    self.pivotObject.rotation_euler = lookAtRotation(reflection, "-x")
+                    #self.activeRegion3D.view_matrix = view_matrix # Change View matrix.
+                    #context.space_data.region_3d.view_perspective = 'CAMERA' # Set as Cam
 
         elif self.changeLightAngle:
             # return early
@@ -1048,8 +1060,7 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
             # set Light as Active Object
             context.view_layer.objects.active = lightObject
             # delete the Set Light Tag if its there
-            # TODO : implement TRY CATCH
-            if lightObject['deleteOnCancel']:
+            if "deleteOnCancel" in lightObject:
                 del lightObject['deleteOnCancel']
             print('finished adjusting Light')
             return {'FINISHED'}
@@ -1067,8 +1078,7 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
             # set Light as Active Object
             context.view_layer.objects.active = lightObject
             # delete light as well if True
-            # TODO : implement TRY CATCH
-            if lightObject['deleteOnCancel']:
+            if "deleteOnCancel" in lightObject:
                 bpy.data.objects.remove(lightObject, do_unlink=True)
             print('canceled adjusting Light')
             return {'CANCELLED'}
