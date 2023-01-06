@@ -577,6 +577,8 @@ def drawOperationOptions(self, context):
     for operation in availableOperations:
         for key, val in operation.items():
             offset: float = counter * spacing
+            increaseCounter: float = boolToFloat(
+                self.currentLightType in operation['AvailableLightType'])
             if self.currentLightType in operation['AvailableLightType']:
                 if key == 'Key':
                     blf.color(font_id, 1.0, 1.0, 0.5, 0.7)  # white 50 trans
@@ -588,7 +590,7 @@ def drawOperationOptions(self, context):
                     blf.position(font_id, availableOperationPos.x +
                                  80.0, availableOperationPos.y - offset, 0.0)
                     blf.draw(font_id, str(val))
-        counter += 1
+        counter += increaseCounter
 
 
 def GetLightValuesForDrawingLabels(lightObject: bpy.types.Object, pivotObject: bpy.types.Object):
@@ -742,7 +744,7 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
     # temporary storeage
     pivotObject: bpy.types.Object = None
     activeSpace3D: bpy.types.SpaceView3D = None
-    activeRegion3D : bpy.types.RegionView3D = None
+    activeRegion3D: bpy.types.RegionView3D = None
     currentLightType = None
     # settings for modal
     zoomSpeedPercent = 0.01
@@ -805,7 +807,8 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
         for area in bpy.context.screen.areas:
             if area.type == 'VIEW_3D':
                 self.activeSpace3D = bpy.types.SpaceView3D(area.spaces.active)
-                self.activeRegion3D = bpy.types.RegionView3D(area.spaces[0].region_3d)
+                self.activeRegion3D = bpy.types.RegionView3D(
+                    area.spaces[0].region_3d)
         self.toggleViewportVisibility = self.activeSpace3D.overlay.show_overlays and self.activeSpace3D.show_gizmo
         # Set light Object as the active object
         lightObject = context.active_object
@@ -1103,6 +1106,7 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
 
         return {'RUNNING_MODAL'}
 
+
 class LIGHTCONTROL_Addon_Preferences(bpy.types.AddonPreferences):
     # this must match the add-on name, use '__package__'
     # when defining this in a submodule of a python package.
@@ -1113,25 +1117,29 @@ class LIGHTCONTROL_Addon_Preferences(bpy.types.AddonPreferences):
         default=0,
     )
     pointLightCountSpawned: bpy.props.IntProperty(
-    name="Spawned Point Lights",
-    default=0,
+        name="Spawned Point Lights",
+        default=0,
     )
     sunLightCountSpawned: bpy.props.IntProperty(
-    name="Spawned Sun Lights",
-    default=0,
+        name="Spawned Sun Lights",
+        default=0,
     )
     spotLightCountSpawned: bpy.props.IntProperty(
-    name="Spawned Spot Lights",
-    default=0,
+        name="Spawned Spot Lights",
+        default=0,
     )
 
     def draw(self, context):
         layout = self.layout
-        layout.label(text="Spawned Area Lights " + str(self.areaLightCountSpawned))
-        layout.label(text="Spawned Point Lights " + str(self.pointLightCountSpawned))
-        layout.label(text="Spawned Sun Lights " + str(self.sunLightCountSpawned))
-        layout.label(text="Spawned Spot Lights " + str(self.spotLightCountSpawned))
-        #layout.prop(self, "areaLightCountSpawned")
+        layout.label(text="Spawned Area Lights " +
+                     str(self.areaLightCountSpawned))
+        layout.label(text="Spawned Point Lights " +
+                     str(self.pointLightCountSpawned))
+        layout.label(text="Spawned Sun Lights " +
+                     str(self.sunLightCountSpawned))
+        layout.label(text="Spawned Spot Lights " +
+                     str(self.spotLightCountSpawned))
+        # layout.prop(self, "areaLightCountSpawned")
 
 
 # class LIGHTCONTROL_OT_create_world_setup(bpy.types.Operator):
