@@ -13,11 +13,12 @@ import mathutils
 import bpy
 from bpy.types import Menu
 import blf
+import bgl
 
 
 bl_info = {
     "name": "Light Control",
-    "description": "Tools that lets you easily create lights (Shift + E) and adjust lights (when light active, E)",
+    "description": "Tools that lets you easily create lights on Mouseposition (Shift + E) and adjust lights (when light active, E)",
     "author": "Malte Decker",
     "version": (0, 8, 0),
     "blender": (3, 3, 0),
@@ -547,7 +548,7 @@ def drawOperationOptions(self, context):
         {"Key": "SPACE", "Description": "Orbit", "AvailableLightType": {
             'AREA', 'POINT', 'SPOT', 'SUN'}},
         {"Key": "CTRL", "Description": "Pivot",
-            "AvailableLightType": {'AREA', 'POINT', 'SPOT', 'SUN'}},
+            "AvailableLightType": {'AREA', 'POINT', 'SPOT'}},
 
         {"Key": "", "Description": "",
             "AvailableLightType": {'AREA', 'POINT', 'SPOT', 'SUN'}},  # Blank Entry
@@ -592,6 +593,18 @@ def drawOperationOptions(self, context):
                     blf.draw(font_id, str(val))
         counter += increaseCounter
 
+    draw_box(self,300,300,40,40,(1.0,1.0,0.0,1.0))
+
+def draw_box(self, x : int, y :int, w : int, h : int, color=(0.0, 0.0, 0.0, 1.0)):
+    #bgl.glDepthRange (0.1, 1.0)
+    bgl.glColor4f(*color)
+    bgl.glBegin(bgl.GL_QUADS)
+
+    bgl.glVertex2f(x + w, y + h)
+    bgl.glVertex2f(x, y + h)
+    bgl.glVertex2f(x, y)
+    bgl.glVertex2f(x + w, y)
+    bgl.glEnd()
 
 def GetLightValuesForDrawingLabels(lightObject: bpy.types.Object, pivotObject: bpy.types.Object):
     lightSize: str = '{0:.2f}'.format(
@@ -1026,6 +1039,9 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
             SetLightBrightnessByRatioClamped(lightObject, rateOfChange)
 
         elif self.changeLightDistance:
+            # Min/Max Distances
+            minDist : float = 0.001
+            maxDist : float = 1000000.0
             lightObjectData: bpy.types.Light = lightObject.data
             if lightObjectData.type == 'SUN':
                 return {'RUNNING_MODAL'}
@@ -1036,8 +1052,7 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
                 step *= self.slowChangeSpeedPercent
             step *= self.zoomSpeedPercent
             # Calculate Position
-            newPosition = mathutils.Vector(
-                (lightObject.location[0] * (1 + step), lightObject.location[1], lightObject.location[2]))
+            newPosition = mathutils.Vector((clamp(lightObject.location[0] * (1 + step),minDist,maxDist), lightObject.location[1], lightObject.location[2]))
             # Calculate Compensation of Lighting by Distance
             pivotPoint: mathutils.Vector = mathutils.Vector(
                 (lightObject["pivotPoint"][0], lightObject["pivotPoint"][1], lightObject["pivotPoint"][2]))
@@ -1066,7 +1081,7 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
             self.pivotObject.rotation_euler = mathutils.Euler((self.pivotObject.rotation_euler.x, clamp(
                 self.pivotObject.rotation_euler.y - yMultiplicator, -pi/2.0, pi/2.0), self.pivotObject.rotation_euler.z + xMultiplicator))
 
-        elif self.approveOperation:
+        if self.approveOperation:
             # Remove Operation Labels
             bpy.types.SpaceView3D.draw_handler_remove(self._handle, 'WINDOW')
             # Unparent
@@ -1079,7 +1094,7 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
             print('finished adjusting Light')
             return {'FINISHED'}
 
-        elif self.cancelOperation:
+        if self.cancelOperation:
             # Remove Operation Labels
             bpy.types.SpaceView3D.draw_handler_remove(self._handle, 'WINDOW')
             # Reset Values
