@@ -13,14 +13,15 @@ import mathutils
 import bpy
 from bpy.types import Menu
 import blf
-import bgl
+import gpu
+from gpu_extras.batch import batch_for_shader
 
 
 bl_info = {
     "name": "Light Control",
     "description": "Tools that lets you easily create lights on Mouseposition (Shift + E) and adjust lights (when light active, E)",
     "author": "Malte Decker",
-    "version": (0, 8, 0),
+    "version": (0, 9, 0),
     "blender": (3, 3, 0),
     "location": "Shortcuts : Shift E and E",
     "category": "Lighting"
@@ -39,28 +40,33 @@ def wrapMouseInWindow(context: bpy.types.Context, event: bpy.types.Event) -> mat
 
     delta: mathutils.Vector = mathutils.Vector(
         (event.mouse_x - event.mouse_prev_x, event.mouse_y - event.mouse_prev_y, 0.0))
+    args =(event.mouse_x,event.mouse_y)
+    offset :mathutils.Vector = mathutils.Vector((0.0,0.0,0.0))
 
-    if event.mouse_x <= context.area.x:  # + 1 and delta.x < 0.0:
+    if event.mouse_x <= context.area.x:
+        args = (context.area.x + width - 1, event.mouse_y)
         context.window.cursor_warp(context.area.x + width - 1, event.mouse_y)
+        offset = mathutils.Vector((width, 0.0, 0.0))
         print(f"moved, offset is width {width}")
-        return mathutils.Vector((width, 0.0, 0.0))
 
-    if event.mouse_x >= context.area.x + width:  # and delta.x > 0.0:
-        context.window.cursor_warp(context.area.x + 1, event.mouse_y)
+    if event.mouse_x >= context.area.x + width:
+        args = (context.area.x + 1, event.mouse_y)
+        offset = mathutils.Vector((-width, 0.0, 0.0))
         print(f"moved, offset is width {-width}")
-        return mathutils.Vector((-width, 0.0, 0.0))
 
-    if event.mouse_y <= context.area.y:  # and delta.y < 0.0:
-        context.window.cursor_warp(event.mouse_x, context.area.y + 1)
+    if event.mouse_y <= context.area.y:
+        args = (event.mouse_x, context.area.y + 1)
+        offset = mathutils.Vector((0.0, -height, 0.0))
         print(f"moved, offset is height {-height}")
-        return mathutils.Vector((0.0, -height, 0.0))
 
-    if event.mouse_y >= context.area.y + height:  # and delta.y > 0.0:
-        context.window.cursor_warp(event.mouse_x, context.area.y + height - 1)
+    if event.mouse_y >= context.area.y + height:
+        args = (event.mouse_x, context.area.y + height - 1)
+        offset = mathutils.Vector((0.0, height, 0.0))
         print(f"moved, offset is height {height}")
-        return mathutils.Vector((0.0, height, 0.0))
 
-    return mathutils.Vector((0.0, 0.0, 0.0))
+    context.window.cursor_warp(*args)
+
+    return offset
 
 
 def resetCursorToCenterRegion(context: bpy.types.Context):
@@ -504,7 +510,7 @@ def drawOperationOptions(self, context):
             "Value": self.lightBrightness, "ActivationBool": self.changeLightBrightness},
         {"Header": "Light Angle", "Description": "Hold A move Mouse Left/Right",
             "Value": self.lightAngle, "ActivationBool": self.changeLightAngle},
-        {"Header": "Light Pivot", "Description": "Hold CTRL or CTRL+SHIFT or CTRL+ALT ",
+        {"Header": "Light Pivot", "Description": "Hold CTRL or CTRL+SHIFT or CTRL+ALT or CTRL+ALT+SHIFT",
             "Value": self.lightPivot, "ActivationBool": self.changeLightPivot},
         {"Header": "Light Color", "Description": "Hold C move Mouse Up/Down (Saturation) and Left/Right (Hue)",
             "Value": self.lightColor, "ActivationBool": self.changeLightColor},
@@ -593,18 +599,42 @@ def drawOperationOptions(self, context):
                     blf.draw(font_id, str(val))
         counter += increaseCounter
 
-    draw_box(self,300,300,40,40,(1.0,1.0,0.0,1.0))
+    # draw ACTIVE
+    width = context.area.width
+    height = context.area.height
+    offset = 25
+    rectangleHeight = 40
+    blf.color(font_id, 1.0, 1.0, 1.0, 1.0)  # white 
+    blf.size(font_id, 32, 72)
+    textWidth = blf.dimensions(0,"EDITING")[0]
+    blf.position(font_id, width - textWidth - offset, rectangleHeight + offset, 0.0)
+    blf.draw(font_id, "EDITING")
+    drawRectangle(width - textWidth - offset,offset,textWidth,rectangleHeight /2,(1.0,1.0,1.0,1.0))
 
-def draw_box(self, x : int, y :int, w : int, h : int, color=(0.0, 0.0, 0.0, 1.0)):
-    #bgl.glDepthRange (0.1, 1.0)
-    bgl.glColor4f(*color)
-    bgl.glBegin(bgl.GL_QUADS)
+    # draw Approve, Cancel
+    blf.color(font_id, 1.0, 1.0, 1.0, 0.5)  # white 50 trans
+    blf.size(font_id, 12, 72)
+    extraOffset = 32.0
+    blf.position(font_id, width - offset - textWidth , rectangleHeight + offset + extraOffset, 0.0)
+    blf.draw(font_id, "CANCEL : RIGHT CLICK") #MOUSE_RMB
+    blf.position(font_id, width - offset - textWidth , rectangleHeight + offset + extraOffset + 16.0, 0.0)
+    blf.draw(font_id, "APPROVE : LEFT CLICK") #MOUSE_LMB
 
-    bgl.glVertex2f(x + w, y + h)
-    bgl.glVertex2f(x, y + h)
-    bgl.glVertex2f(x, y)
-    bgl.glVertex2f(x + w, y)
-    bgl.glEnd()
+
+def drawRectangle(x : int, y: int, width : int, height : int, color : tuple[float,float,float,float]):
+    vertices = (
+        (x, y), (x+width, y),
+        (x, y+height), (x+width, y+height))
+
+    indices = (
+        (0, 1, 2), (2, 1, 3))
+
+    shader = gpu.shader.from_builtin('2D_UNIFORM_COLOR')
+    batch = batch_for_shader(shader, 'TRIS', {"pos": vertices}, indices=indices)
+    
+    shader.bind()
+    shader.uniform_float("color", color)
+    batch.draw(shader)
 
 def GetLightValuesForDrawingLabels(lightObject: bpy.types.Object, pivotObject: bpy.types.Object):
     lightSize: str = '{0:.2f}'.format(
@@ -683,11 +713,9 @@ class LIGHTCONTROL_OT_add_light(bpy.types.Operator):
         # Calculate Light Distance
         pivotPoint = mathutils.Vector(
             (hitlocation[0], hitlocation[1], hitlocation[2]))
-        lightDistance: float = 3.0
-        # if there is a camera, use it to calculate an appropriate light distance.
-        if context.scene.camera:
-            cameraToPivot: mathutils.Vector = context.scene.camera.location - pivotPoint
-            lightDistance: float = cameraToPivot.magnitude * self.initialLightDistancePercent
+        r3d = context.area.spaces.active.region_3d
+        cameraPosition : mathutils.Vector = r3d.view_matrix.inverted().translation
+        lightDistance: float = (cameraPosition - pivotPoint).magnitude * self.initialLightDistancePercent
         # Create Light
         lightObject = CreateLight(context, pivotPoint, str(self.lightType))
         # Calculate Light Intensity
@@ -721,7 +749,7 @@ class LIGHTCONTROL_OT_add_light(bpy.types.Operator):
 
 class LIGHTCONTROL_MT_add_light_pie_menu(Menu):
     # label is displayed at the center of the pie menu.
-    bl_label = "Add Light at Mouse"
+    bl_label = "Add Light at Mouse Position"
 
     def draw(self, context):
         layout = self.layout
@@ -752,7 +780,7 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
     """Takes control of Blender and Lets you adjust the Light"""
     bl_idname = "lightcontrol.adjust_light"
     bl_label = "Adjust Light"
-    bl_options = {'REGISTER', 'UNDO'}
+    bl_options = {'REGISTER', 'UNDO','GRAB_CURSOR' ,'BLOCKING'} # grab cursor and blocking activates continous grab
 
     # temporary storeage
     pivotObject: bpy.types.Object = None
@@ -822,7 +850,7 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
                 self.activeSpace3D = bpy.types.SpaceView3D(area.spaces.active)
                 self.activeRegion3D = bpy.types.RegionView3D(
                     area.spaces[0].region_3d)
-        self.toggleViewportVisibility = self.activeSpace3D.overlay.show_overlays and self.activeSpace3D.show_gizmo
+        self.toggleViewportVisibility = self.activeSpace3D.overlay.show_overlays # and self.activeSpace3D.show_gizmo
         # Set light Object as the active object
         lightObject = context.active_object
         # Set current Light Type
@@ -841,9 +869,8 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
         self.pivotObject.location = GetLightPivot(lightObject)
         bpy.context.scene.collection.objects.link(self.pivotObject)
         # size pivot correctly
-        r3d = context.area.spaces.active.region_3d
-        distance: mathutils.Vector = self.pivotObject.location - \
-            r3d.view_matrix.inverted().translation
+        cameraPosition : mathutils.Vector = self.activeRegion3D.view_matrix.inverted().translation
+        distance: mathutils.Vector = self.pivotObject.location - cameraPosition
         self.pivotObject.empty_display_size = distance.magnitude * self.emptyDisplaySize
         # unrotate and place light
         pivotToLight: mathutils.Vector = lightObject.location - self.pivotObject.location
@@ -866,16 +893,12 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
         # draw Labels
         context.area.tag_redraw()
 
-        # wrap mouse movement so it stays in window
-        deltaOffset: mathutils.Vector = wrapMouseInWindow(context, event)
-
         # save the active object
         lightObject: bpy.types.Object = context.active_object
 
         # Set pivot empty display size based on distance
-        r3d = context.area.spaces.active.region_3d
-        newDistance: mathutils.Vector = self.pivotObject.location - \
-            r3d.view_matrix.inverted().translation
+        cameraPosition : mathutils.Vector = self.activeRegion3D.view_matrix.inverted().translation
+        newDistance: mathutils.Vector = self.pivotObject.location - cameraPosition
         self.pivotObject.empty_display_size = newDistance.magnitude * self.emptyDisplaySize
 
         # Calculate delta for later usage
@@ -886,7 +909,6 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
         delta: mathutils.Vector = mathutils.Vector(
             (event.mouse_x - event.mouse_prev_x, event.mouse_y - event.mouse_prev_y, 0.0))
         delta += mouseWheelDelta
-        delta += deltaOffset
 
         # Update Labels for Drawing
         self.lightSize, self.lightDistance, self.lightBrightness, self.lightAngle, self.lightPivot, self.lightOrbit, self.lightColor = GetLightValuesForDrawingLabels(
@@ -916,6 +938,38 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
 
         # Pass through Navigation
         # allow view navigation, and collapsing the panels
+
+        if self.approveOperation:
+            # Remove Operation Labels
+            bpy.types.SpaceView3D.draw_handler_remove(self._handle, 'WINDOW')
+            # Unparent
+            UnparentAndKeepPositionRemoveParent(self.pivotObject, lightObject)
+            # set Light as Active Object
+            context.view_layer.objects.active = lightObject
+            # delete the Set Light Tag if its there
+            if "deleteOnCancel" in lightObject:
+                del lightObject['deleteOnCancel']
+            print('finished adjusting Light')
+            return {'FINISHED'}
+
+        if self.cancelOperation:
+            # Remove Operation Labels
+            bpy.types.SpaceView3D.draw_handler_remove(self._handle, 'WINDOW')
+            # Reset Values
+            SetLightValues(lightObject, self.pivotObject, self.initialLightOrbit, self.initialLightDistance, self.initialLightSize,
+                           self.initialLightBrightness, self.initialLightAngle, self.initialLightPivot, self.initialLightColor)
+            # Update Matrices
+            context.view_layer.update()
+            # Unparent
+            UnparentAndKeepPositionRemoveParent(self.pivotObject, lightObject)
+            # set Light as Active Object
+            context.view_layer.objects.active = lightObject
+            # delete light as well if True
+            if "deleteOnCancel" in lightObject:
+                bpy.data.objects.remove(lightObject, do_unlink=True)
+            print('canceled adjusting Light')
+            return {'CANCELLED'}
+
         if event.type in {'MIDDLEMOUSE', 'N', 'T'}:
             return {'PASS_THROUGH'}
 
@@ -924,10 +978,10 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
             lightObjectData: bpy.types.Light = lightObject.data
             lightColor: mathutils.Color = lightObjectData.color
             # Calculate Rate of Change
-            hue: float = (lightColor.hsv[0] + delta.x *
+            hue: float = (lightColor.hsv[0] + delta.y *
                           self.hueChangeSensitivity) % 1.0
             sat: float = bl_math.clamp(
-                lightColor.hsv[1] + delta.y * self.saturationChangeSensitivity, 0.0, 1.0)
+                lightColor.hsv[1] + delta.x * self.saturationChangeSensitivity, 0.0, 1.0)
             val: float = lightColor.hsv[2]
             # Set light Color
             lightColor.hsv = (hue, sat, val)
@@ -937,7 +991,17 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
             hitobj, hitlocation, hitnormal, hitindex, hitdistance = raycastCursor(
                 context, mousepos=(event.mouse_region_x, event.mouse_region_y), debug=False)
             if hitobj:
-                if event.shift:  # only move pivot
+                if event.alt and event.shift: # rotate Pivot, reflected view vector
+                    cameraPosition : mathutils.Vector = self.activeRegion3D.view_matrix.inverted().translation
+                    camToHit : mathutils.Vector = hitlocation - cameraPosition
+                    reflection : mathutils.Vector = camToHit.reflect(hitnormal)
+                    self.pivotObject.rotation_euler = lookAtRotation(reflection, "-x")
+                    self.pivotObject.location = hitlocation
+                    lightObject["pivotPoint"] = (
+                        hitlocation.x, hitlocation.y, hitlocation.z)
+                    #self.activeRegion3D.view_matrix = view_matrix # Change View matrix.
+                    #context.space_data.region_3d.view_perspective = 'CAMERA' # Set as Cam
+                elif event.shift:  # only move pivot
                     lightWorldPos: mathutils.Vector = lightObject.matrix_world.to_translation()
                     lightToPivot: mathutils.Vector = lightWorldPos - self.pivotObject.location
                     lightToHit: mathutils.Vector = lightWorldPos - hitlocation
@@ -951,23 +1015,16 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
                     lightObject.location *= scalingRatio
                     lightObject["pivotPoint"] = (
                         hitlocation.x, hitlocation.y, hitlocation.z)
+                elif event.alt:  # rotate Pivot, normal of Object
+                    self.pivotObject.location = hitlocation
+                    lightObject["pivotPoint"] = (
+                        hitlocation.x, hitlocation.y, hitlocation.z)
+                    self.pivotObject.rotation_euler = lookAtRotation(
+                        hitnormal, "-x")
                 else:  # move pivot and light object
                     self.pivotObject.location = hitlocation
                     lightObject["pivotPoint"] = (
                         hitlocation.x, hitlocation.y, hitlocation.z)
-                if event.alt:  # rotate Pivot, normal of Object
-                    self.pivotObject.rotation_euler = lookAtRotation(
-                        hitnormal, "-x")
-                # if event.alt: # rotate Pivot, reflected view vector
-                #     cameraPosition : mathutils.Vector = self.activeRegion3D.view_matrix.inverted().translation
-                #     camToHit : mathutils.Vector = hitlocation - cameraPosition
-                #     reflection : mathutils.Vector = camToHit.reflect(hitnormal)
-                #     print(f"camtohit {camToHit}")
-                #     print(f"reflection {reflection}")
-                #     print(f"hitnormal {hitnormal}")
-                #     self.pivotObject.rotation_euler = lookAtRotation(reflection, "-x")
-                #     #self.activeRegion3D.view_matrix = view_matrix # Change View matrix.
-                #     #context.space_data.region_3d.view_perspective = 'CAMERA' # Set as Cam
 
         elif self.changeLightAngle:
             # return early
@@ -1081,41 +1138,10 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
             self.pivotObject.rotation_euler = mathutils.Euler((self.pivotObject.rotation_euler.x, clamp(
                 self.pivotObject.rotation_euler.y - yMultiplicator, -pi/2.0, pi/2.0), self.pivotObject.rotation_euler.z + xMultiplicator))
 
-        if self.approveOperation:
-            # Remove Operation Labels
-            bpy.types.SpaceView3D.draw_handler_remove(self._handle, 'WINDOW')
-            # Unparent
-            UnparentAndKeepPositionRemoveParent(self.pivotObject, lightObject)
-            # set Light as Active Object
-            context.view_layer.objects.active = lightObject
-            # delete the Set Light Tag if its there
-            if "deleteOnCancel" in lightObject:
-                del lightObject['deleteOnCancel']
-            print('finished adjusting Light')
-            return {'FINISHED'}
-
-        if self.cancelOperation:
-            # Remove Operation Labels
-            bpy.types.SpaceView3D.draw_handler_remove(self._handle, 'WINDOW')
-            # Reset Values
-            SetLightValues(lightObject, self.pivotObject, self.initialLightOrbit, self.initialLightDistance, self.initialLightSize,
-                           self.initialLightBrightness, self.initialLightAngle, self.initialLightPivot, self.initialLightColor)
-            # Update Matrices
-            context.view_layer.update()
-            # Unparent
-            UnparentAndKeepPositionRemoveParent(self.pivotObject, lightObject)
-            # set Light as Active Object
-            context.view_layer.objects.active = lightObject
-            # delete light as well if True
-            if "deleteOnCancel" in lightObject:
-                bpy.data.objects.remove(lightObject, do_unlink=True)
-            print('canceled adjusting Light')
-            return {'CANCELLED'}
-
         # Set Visibility
         if self.activeSpace3D:
             self.activeSpace3D.overlay.show_overlays = self.toggleViewportVisibility
-            self.activeSpace3D.show_gizmo = self.toggleViewportVisibility
+            #self.activeSpace3D.show_gizmo = self.toggleViewportVisibility
 
         # TODO : Change Pivot Point Size depending on Distance to Pivot
 
