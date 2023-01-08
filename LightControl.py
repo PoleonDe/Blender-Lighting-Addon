@@ -514,8 +514,10 @@ def drawOperationOptions(self, context):
             "Value": self.lightPivot, "ActivationBool": self.changeLightPivot},
         {"Header": "Light Color", "Description": "Hold C move Mouse Up/Down (Saturation) and Left/Right (Hue)",
             "Value": self.lightColor, "ActivationBool": self.changeLightColor},
-        {"Header": "Orbit", "Description": "Move Mouse Left/Right",
-            "Value": self.lightOrbit, "ActivationBool": self.changeLightOrbit}
+        {"Header": "Orbit", "Description": "Hold Space/R move Mouse Left/Right",
+            "Value": self.lightOrbit, "ActivationBool": self.changeLightOrbit},
+        {"Header": "Tilt", "Description" : "Hold T move Mouse Left/Right",
+            "Value" : self.tilt, "ActivationBool": self.changeLightTilt}
     ]
 
     stopLoop: bool = False
@@ -551,10 +553,10 @@ def drawOperationOptions(self, context):
             break
 
     availableOperations = [
-        {"Key": "SPACE", "Description": "Orbit", "AvailableLightType": {
+        {"Key": "SPACE / R", "Description": "Orbit", "AvailableLightType": {
             'AREA', 'POINT', 'SPOT', 'SUN'}},
         {"Key": "CTRL", "Description": "Pivot",
-            "AvailableLightType": {'AREA', 'POINT', 'SPOT'}},
+            "AvailableLightType": {'AREA', 'POINT', 'SPOT', 'SUN'}},
 
         {"Key": "", "Description": "",
             "AvailableLightType": {'AREA', 'POINT', 'SPOT', 'SUN'}},  # Blank Entry
@@ -569,6 +571,8 @@ def drawOperationOptions(self, context):
             "AvailableLightType": {'AREA', 'POINT', 'SPOT', 'SUN'}},
         {"Key": "S", "Description": "Size",
             "AvailableLightType": {'AREA', 'POINT', 'SPOT'}},
+        {"Key": "T", "Description": "Tilt",
+            "AvailableLightType": {'AREA', 'SPOT'}},
 
         {"Key": "", "Description": "", "AvailableLightType": {
             'AREA', 'POINT', 'SPOT', 'SUN'}},  # Blank Entry
@@ -808,6 +812,7 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
     changeLightAngle: bool = False
     changeLightColor: bool = False
     changeLightPivot: bool = False
+    changeLightTilt: bool = False
     toggleViewportVisibility: bool = False
     # values for drawing
     lightSize: str = ""
@@ -817,6 +822,7 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
     lightPivot: str = ""
     lightOrbit: str = ""
     lightColor: str = ""
+    lightTilt: str = ""
     # values for reverting
     initialLightOrbit: mathutils.Vector = mathutils.Vector(
         (0.0, 0.0, 0.0))
@@ -826,6 +832,7 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
     initialLightAngle: float = 0.0
     initialLightPivot: mathutils.Vector = mathutils.Vector((0.0, 0.0, 0.0))
     initialLightColor: mathutils.Color = mathutils.Color((0.0, 0.0, 0.0))
+    initialLightTilt: mathutils.Vector = mathutils.Vector((0.0,0.0,0.0))
 
     @ classmethod
     def poll(cls, context):
@@ -929,7 +936,9 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
             self.changeLightColor = event.value == 'PRESS'
         if event.type == 'A':
             self.changeLightAngle = event.value == 'PRESS'
-        if event.type == 'SPACE':
+        if event.type == 'T':
+            self.changeLightTilt = event.value == 'PRESS'
+        if event.type in {'SPACE' , 'R'}:
             self.changeLightOrbit = event.value == 'PRESS'
         if event.type == 'V':
             if event.value == 'PRESS':
@@ -973,6 +982,9 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
         if event.type in {'MIDDLEMOUSE', 'N', 'T'}:
             return {'PASS_THROUGH'}
 
+        elif self.lightTilt:
+            pass
+        
         elif self.changeLightColor:
             # Get Light Color
             lightObjectData: bpy.types.Light = lightObject.data
