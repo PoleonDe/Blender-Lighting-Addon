@@ -40,8 +40,8 @@ def wrapMouseInWindow(context: bpy.types.Context, event: bpy.types.Event) -> mat
 
     delta: mathutils.Vector = mathutils.Vector(
         (event.mouse_x - event.mouse_prev_x, event.mouse_y - event.mouse_prev_y, 0.0))
-    args =(event.mouse_x,event.mouse_y)
-    offset :mathutils.Vector = mathutils.Vector((0.0,0.0,0.0))
+    args = (event.mouse_x, event.mouse_y)
+    offset: mathutils.Vector = mathutils.Vector((0.0, 0.0, 0.0))
 
     if event.mouse_x <= context.area.x:
         args = (context.area.x + width - 1, event.mouse_y)
@@ -271,6 +271,21 @@ def UnparentAndKeepPositionRemoveParent(parent: bpy.types.Object, child: bpy.typ
 # Light Adjustment Functions
 
 
+def GetLightType(lightObject: bpy.types.Object):
+    lightObjectData: bpy.types.Light = lightObject.data
+    '''Returns the Type of Light as tuple - 1. AREA,SUN,POINT,SPOT as string, 2. lightData'''
+    if lightObjectData.type == 'AREA':
+        return ('AREA', bpy.types.AreaLight(lightObject.data))
+    elif lightObjectData.type == 'POINT':
+        return ('POINT', bpy.types.PointLight(lightObject.data))
+    elif lightObjectData.type == 'SPOT':
+        return ('SPOT', bpy.types.SpotLight(lightObject.data))
+    elif lightObjectData.type == 'SUN':
+        return ('SUN', bpy.types.SunLight(lightObject.data))
+    else:
+        return ('NONE', None)
+
+
 def GetLightBrightness(lightObject: bpy.types.Object) -> float:
     # Get enery based on Lamp Type
     lightObjectData: bpy.types.Light = lightObject.data
@@ -291,10 +306,8 @@ def GetLightBrightness(lightObject: bpy.types.Object) -> float:
         return -1.0
 
 
-def SetLightBrightness(lightObject: bpy.types.Object, newIntensity: float):
-    # minimum and maximum Light Intensity
-    minimumIntensity: float = 0.001
-    maximumIntensity: float = 10000000
+def SetLightBrightnessClamped(lightObject: bpy.types.Object, newIntensity: float, minimumIntensity: float = 0.001, maximumIntensity: float = 10000000):
+    '''Set the Brightness of a Lamp, min 0.001, max 10000000'''
     # Set enery based on Lamp Type
     lightObjectData: bpy.types.Light = lightObject.data
 
@@ -320,9 +333,10 @@ def SetLightBrightness(lightObject: bpy.types.Object, newIntensity: float):
             sunLightObjectData.energy, minimumIntensity, maximumIntensity)
 
 
-def SetLightBrightnessByRatioClamped(lightObject: bpy.types.Object, changeRatePercent: float):
-    SetLightBrightness(lightObject, GetLightBrightness(
-        lightObject) * changeRatePercent)
+def SetLightBrightnessByRatioClamped(lightObject: bpy.types.Object, changeRatePercent: float, minimumIntensity: float = 0.001, maximumIntensity: float = 10000000):
+    '''Change Brightness of a Lamp by a percentage Factor, clamped to min 0.001, max 10000000'''
+    SetLightBrightnessClamped(lightObject, GetLightBrightness(
+        lightObject) * changeRatePercent, minimumIntensity, maximumIntensity)
 
 
 def GetLightSize(lightObject: bpy.types.Object) -> float:
@@ -342,19 +356,21 @@ def GetLightSize(lightObject: bpy.types.Object) -> float:
         return -1.0
 
 
-def SetLightSize(lightObject: bpy.types.Object, lightSize: float):
+def SetLightSizeClamped(lightObject: bpy.types.Object, lightSize: float, minimumSize: float = 0.001, maximumSize: float = 10000000):
     # Set lightSize based on Lamp Type
     lightObjectData: bpy.types.Light = lightObject.data
 
     if lightObjectData.type == 'AREA':
         areaLightObjectData: bpy.types.AreaLight = lightObject.data
-        areaLightObjectData.size = lightSize
+        areaLightObjectData.size = clamp(lightSize, minimumSize, maximumSize)
     elif lightObjectData.type == 'POINT':
         pointLightObjectData: bpy.types.PointLight = lightObject.data
-        pointLightObjectData.shadow_soft_size = lightSize
+        pointLightObjectData.shadow_soft_size = clamp(
+            lightSize, minimumSize, maximumSize)
     elif lightObjectData.type == 'SPOT':
         spotLightObjectData: bpy.types.SpotLight = lightObject.data
-        spotLightObjectData.shadow_soft_size = lightSize
+        spotLightObjectData.shadow_soft_size = clamp(
+            lightSize, minimumSize, maximumSize)
 
 
 def GetLightDistance(lightObject: bpy.types.Object) -> float:
@@ -484,14 +500,162 @@ def GetLightValues(lightObject: bpy.types.Object, pivotObject: bpy.types.Object)
     return lightOrbit, lightDistance, lightSize, lightBrightness, lightAngle, lightPivot, lightColor
 
 
-def SetLightValues(lightObject: bpy.types.Object, pivotObject: bpy.types.Object, lightOrbit: mathutils.Vector, lightDistance: float, lightSize: float, lightBrightness: float, lightAngle: float, lightPivot: mathutils.Vector, lightColor: mathutils.Color):
-    SetLightPivot(lightObject, pivotObject, lightPivot)
-    SetLightDistance(lightObject, lightDistance)
-    SetLightOrbit(pivotObject, lightOrbit)
-    SetLightSize(lightObject, lightSize)
-    SetLightBrightness(lightObject, lightBrightness)
-    SetLightAngle(lightObject, lightAngle)
-    SetLightColor(lightObject, lightColor)
+def SetLightOrbitByDelta(self, pivotObject: bpy.types.Object, delta: mathutils.Vector, rotationSpeed: float, slowChange: bool, slowChangeSpeed: float) -> bool:
+    '''Adds to the Orientation of an Object an Azimuth and Elevation based on a delta, Rotation Order should be XYZ'''
+    if pivotObject.rotation_mode != 'XYZ':
+        self.report(
+            {'INFO'}, 'cant guarantee expected Result, set Rotation Mode to XYZ')
+    # calculate Delta
+    step: mathutils.Vector = mathutils.Vector(
+        (delta.x, delta.y, delta.z))
+    step *= rotationSpeed
+    if slowChange:
+        step *= slowChangeSpeed
+    xMultiplicator = step.x
+    yMultiplicator = step.y
+    # add delta rotation to existing rotation and clamp it
+    pivotObject.rotation_euler = mathutils.Euler((pivotObject.rotation_euler.x, clamp(
+        pivotObject.rotation_euler.y - yMultiplicator, -pi/2.0, pi/2.0), pivotObject.rotation_euler.z + xMultiplicator))
+
+
+def SetLightDistanceByDeltaClamped(lightObject: bpy.types.Object, delta: mathutils.Vector, zoomSpeedPercent: float, slowChange: bool, slowChangeSpeed: float, minimumDistance: float = 0.001, maximumDistance: float = 1000000.0):
+    '''changes the light distance based on a percentage per delta'''
+    # Get Delta
+    step: float = delta.x
+    # Adjust Rate of Change
+    if slowChange:
+        step *= slowChangeSpeed
+    step *= zoomSpeedPercent
+    # Calculate Position
+    newPosition = mathutils.Vector((clamp(lightObject.location[0] * (
+        1 + step), minimumDistance, maximumDistance), lightObject.location[1], lightObject.location[2]))
+    # Calculate Compensation of Lighting by Distance
+    pivotPoint: mathutils.Vector = mathutils.Vector(
+        (lightObject["pivotPoint"][0], lightObject["pivotPoint"][1], lightObject["pivotPoint"][2]))
+    oldLightDistanceToPivot: float = (
+        lightObject.location - pivotPoint).magnitude
+    newLightDistanceToPivot: float = (
+        newPosition - pivotPoint).magnitude
+    adjustedIntensity: float = intensityByInverseSquareLaw(GetLightBrightness(
+        lightObject), oldLightDistanceToPivot, newLightDistanceToPivot)
+    # TODO: not the prettiest but for now it will do
+    if newLightDistanceToPivot < 100.0:
+        # Adjust Light Intensity
+        SetLightBrightnessClamped(
+            lightObject, adjustedIntensity, minimumDistance, maximumDistance)
+        # Set Position
+        lightObject.location = newPosition
+
+
+def SetLightBrightnessByDeltaClamped(lightObject: bpy.types.Object, delta: mathutils.Vector, brightnessChangePercent: float, slowChange: bool, slowChangeSpeed: float, minimumIntensity: float = 0.001, maximumIntensity: float = 10000000):
+    # Get Delta
+    step: float = delta.x
+    # Adjust Rate of Change
+    if slowChange:
+        step *= slowChangeSpeed
+    step *= brightnessChangePercent
+    rateOfChange: float = 1.0 + step
+    # Set enery based on Lamp Type
+    SetLightBrightnessByRatioClamped(
+        lightObject, rateOfChange, minimumIntensity, maximumIntensity)
+
+
+def SetLightSizeByDeltaClamped(lightObject: bpy.types.Object, delta: mathutils.Vector, sizeChangeSensitivity: float, slowChange: bool, slowChangeSpeed: float,  minimumSize: float = 0.001, maximumSize: float = 10000000):
+    # Multiplication Factor
+    step = delta.x * sizeChangeSensitivity
+    if slowChange:
+        step *= slowChangeSpeed
+    rateOfChange = 1.0 + step
+    # Setting Size
+    SetLightSizeClamped(lightObject, GetLightSize(
+        lightObject) * rateOfChange, minimumSize, maximumSize)
+
+
+def SetLightAngleByDelta(lightObject: bpy.types.Object, delta: mathutils.Vector, angleChangeSensitivity: float, slowChange: bool, slowChangeSpeed: float,):
+    # Get Delta
+    step: mathutils.Vector = mathutils.Vector(
+        (delta.x, delta.y, delta.z))
+    # Adjust Rate of Change
+    if slowChange:
+        step *= slowChangeSpeed
+    step *= angleChangeSensitivity
+    rateOfChangeX: float = 1.0 + step.x
+    rateOfChangeY: float = 1.0 + step.y
+    lightObjectData: bpy.types.Light = lightObject.data
+    if lightObjectData.type == 'SPOT':
+        spotLightObjectData: bpy.types.SpotLight = lightObjectData
+        spotLightObjectData.spot_size = bl_math.clamp(
+            spotLightObjectData.spot_size * rateOfChangeX, 0.017, 3.1415)  # in Radians
+        spotLightObjectData.spot_blend = bl_math.clamp(
+            spotLightObjectData.spot_blend * rateOfChangeY, 0.01, 1.0)
+    elif lightObjectData.type == 'AREA':
+        areaLightObjectData: bpy.types.AreaLight = lightObjectData
+        areaLightObjectData.spread = bl_math.clamp(
+            areaLightObjectData.spread * rateOfChangeX, 0.017, 3.1415)  # in Radians
+    elif lightObjectData.type == 'SUN':
+        sunLightObjectData: bpy.types.SunLight = lightObjectData
+        sunLightObjectData.angle = bl_math.clamp(
+            sunLightObjectData.angle * rateOfChangeX, 0.001, 180.0)
+
+
+def SetLight_Pivot_Position_Rotation_ByNormal(lightObject: bpy.types.Object, pivotObject: bpy.types.Object, hitLocation: mathutils.Vector, hitNormal: mathutils.Vector):
+    pivotObject.location = hitLocation
+    lightObject["pivotPoint"] = (
+        hitLocation.x, hitLocation.y, hitLocation.z)
+    pivotObject.rotation_euler = lookAtRotation(
+        hitNormal, "-x")
+
+
+def SetLight_Pivot_Position_Rotation_ByReflection(activeRegion3D: bpy.types.RegionView3D, lightObject: bpy.types.Object, pivotObject: bpy.types.Object, hitLocation: mathutils.Vector, hitNormal: mathutils.Vector):
+    cameraPosition: mathutils.Vector = activeRegion3D.view_matrix.inverted().translation
+    camToHit: mathutils.Vector = hitLocation - cameraPosition
+    reflection: mathutils.Vector = camToHit.reflect(hitNormal)
+    pivotObject.rotation_euler = lookAtRotation(
+        reflection, "-x")
+    pivotObject.location = hitLocation
+    lightObject["pivotPoint"] = (
+        hitLocation.x, hitLocation.y, hitLocation.z)
+    # self.activeRegion3D.view_matrix = view_matrix # Change View matrix.
+    # context.space_data.region_3d.view_perspective = 'CAMERA' # Set as Cam
+
+
+def SetLight_Pivot_Position_ByHit(lightObject: bpy.types.Object, pivotObject: bpy.types.Object, hitLocation: mathutils.Vector):
+    pivotObject.location = hitLocation
+    lightObject["pivotPoint"] = (
+        hitLocation.x, hitLocation.y, hitLocation.z)
+
+
+def SetLight_Pivot_ByHit(context: bpy.types.Context, lightObject: bpy.types.Object, pivotObject: bpy.types.Object, hitLocation: mathutils.Vector):
+    # Position Calculation
+    lightWorldPos: mathutils.Vector = lightObject.matrix_world.to_translation()
+    lightToPivot: mathutils.Vector = lightWorldPos - pivotObject.location
+    lightToHit: mathutils.Vector = lightWorldPos - hitLocation
+    prevDistance: float = lightToPivot.magnitude
+    newDistance: float = lightToHit.magnitude
+    pivotObject.location = hitLocation
+    pivotObject.rotation_euler = lookAtRotation(
+        lightToHit)
+    context.view_layer.update()
+    scalingRatio: float = newDistance / prevDistance
+    # Set Position
+    lightObject.location *= scalingRatio
+    # Update Pivot Attribute
+    lightObject["pivotPoint"] = (
+        hitLocation.x, hitLocation.y, hitLocation.z)
+
+
+def SetLightColorByDelta(lightObject: bpy.types.Object, delta: mathutils.Vector, hueChangeSensitivity: float, saturationChangeSensitivity: float):
+    # Get Light Color
+    lightObjectData: bpy.types.Light = lightObject.data
+    lightColor: mathutils.Color = lightObjectData.color
+    # Calculate Rate of Change
+    hue: float = (lightColor.hsv[0] + delta.y *
+                  hueChangeSensitivity) % 1.0
+    sat: float = bl_math.clamp(
+        lightColor.hsv[1] + delta.x * saturationChangeSensitivity, 0.0, 1.0)
+    val: float = lightColor.hsv[2]
+    # Set light Color
+    lightColor.hsv = (hue, sat, val)
 
 # drawing Labels
 
@@ -516,8 +680,8 @@ def drawOperationOptions(self, context):
             "Value": self.lightColor, "ActivationBool": self.changeLightColor},
         {"Header": "Orbit", "Description": "Hold Space/R move Mouse Left/Right",
             "Value": self.lightOrbit, "ActivationBool": self.changeLightOrbit},
-        {"Header": "Tilt", "Description" : "Hold T move Mouse Left/Right",
-            "Value" : self.tilt, "ActivationBool": self.changeLightTilt}
+        {"Header": "Tilt", "Description": "Hold T move Mouse Left/Right",
+            "Value": self.lightTilt, "ActivationBool": self.changeLightTilt}
     ]
 
     stopLoop: bool = False
@@ -608,24 +772,28 @@ def drawOperationOptions(self, context):
     height = context.area.height
     offset = 25
     rectangleHeight = 40
-    blf.color(font_id, 1.0, 1.0, 1.0, 1.0)  # white 
+    blf.color(font_id, 1.0, 1.0, 1.0, 1.0)  # white
     blf.size(font_id, 32, 72)
-    textWidth = blf.dimensions(0,"EDITING")[0]
-    blf.position(font_id, width - textWidth - offset, rectangleHeight + offset, 0.0)
+    textWidth = blf.dimensions(0, "EDITING")[0]
+    blf.position(font_id, width - textWidth - offset,
+                 rectangleHeight + offset, 0.0)
     blf.draw(font_id, "EDITING")
-    drawRectangle(width - textWidth - offset,offset,textWidth,rectangleHeight /2,(1.0,1.0,1.0,1.0))
+    drawRectangle(width - textWidth - offset, offset, textWidth,
+                  rectangleHeight / 2, (1.0, 1.0, 1.0, 1.0))
 
     # draw Approve, Cancel
     blf.color(font_id, 1.0, 1.0, 1.0, 0.5)  # white 50 trans
     blf.size(font_id, 12, 72)
     extraOffset = 32.0
-    blf.position(font_id, width - offset - textWidth , rectangleHeight + offset + extraOffset, 0.0)
-    blf.draw(font_id, "CANCEL : RIGHT CLICK") #MOUSE_RMB
-    blf.position(font_id, width - offset - textWidth , rectangleHeight + offset + extraOffset + 16.0, 0.0)
-    blf.draw(font_id, "APPROVE : LEFT CLICK") #MOUSE_LMB
+    blf.position(font_id, width - offset - textWidth,
+                 rectangleHeight + offset + extraOffset, 0.0)
+    blf.draw(font_id, "CANCEL : RIGHT CLICK")  # MOUSE_RMB
+    blf.position(font_id, width - offset - textWidth,
+                 rectangleHeight + offset + extraOffset + 16.0, 0.0)
+    blf.draw(font_id, "APPROVE : LEFT CLICK")  # MOUSE_LMB
 
 
-def drawRectangle(x : int, y: int, width : int, height : int, color : tuple[float,float,float,float]):
+def drawRectangle(x: int, y: int, width: int, height: int, color: tuple[float, float, float, float]):
     vertices = (
         (x, y), (x+width, y),
         (x, y+height), (x+width, y+height))
@@ -634,11 +802,13 @@ def drawRectangle(x : int, y: int, width : int, height : int, color : tuple[floa
         (0, 1, 2), (2, 1, 3))
 
     shader = gpu.shader.from_builtin('2D_UNIFORM_COLOR')
-    batch = batch_for_shader(shader, 'TRIS', {"pos": vertices}, indices=indices)
-    
+    batch = batch_for_shader(
+        shader, 'TRIS', {"pos": vertices}, indices=indices)
+
     shader.bind()
     shader.uniform_float("color", color)
     batch.draw(shader)
+
 
 def GetLightValuesForDrawingLabels(lightObject: bpy.types.Object, pivotObject: bpy.types.Object):
     lightSize: str = '{0:.2f}'.format(
@@ -718,8 +888,9 @@ class LIGHTCONTROL_OT_add_light(bpy.types.Operator):
         pivotPoint = mathutils.Vector(
             (hitlocation[0], hitlocation[1], hitlocation[2]))
         r3d = context.area.spaces.active.region_3d
-        cameraPosition : mathutils.Vector = r3d.view_matrix.inverted().translation
-        lightDistance: float = (cameraPosition - pivotPoint).magnitude * self.initialLightDistancePercent
+        cameraPosition: mathutils.Vector = r3d.view_matrix.inverted().translation
+        lightDistance: float = (
+            cameraPosition - pivotPoint).magnitude * self.initialLightDistancePercent
         # Create Light
         lightObject = CreateLight(context, pivotPoint, str(self.lightType))
         # Calculate Light Intensity
@@ -732,7 +903,7 @@ class LIGHTCONTROL_OT_add_light(bpy.types.Operator):
             lightIntensity = intensityByInverseSquareLaw(
                 60, 2.5, lightDistance)
         # Set Light Intensity
-        SetLightBrightness(lightObject, lightIntensity)
+        SetLightBrightnessClamped(lightObject, lightIntensity)
         # Position Light
         PositionLight(lightObject, mathutils.Vector(
             (hitnormal[0], hitnormal[1], hitnormal[2])), lightDistance)
@@ -784,7 +955,8 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
     """Takes control of Blender and Lets you adjust the Light"""
     bl_idname = "lightcontrol.adjust_light"
     bl_label = "Adjust Light"
-    bl_options = {'REGISTER', 'UNDO','GRAB_CURSOR' ,'BLOCKING'} # grab cursor and blocking activates continous grab
+    # grab cursor and blocking activates continous grab
+    bl_options = {'REGISTER', 'UNDO', 'GRAB_CURSOR', 'BLOCKING'}
 
     # temporary storeage
     pivotObject: bpy.types.Object = None
@@ -794,7 +966,7 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
     # settings for modal
     zoomSpeedPercent = 0.01
     rotationSpeed = 0.006
-    energyGrowthPercent = 0.01
+    brightnessChangePercent = 0.01
     angleChangeSensitivity = 0.01
     sizeChangeSensitivity = 0.01
     hueChangeSensitivity = 0.0003
@@ -832,7 +1004,7 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
     initialLightAngle: float = 0.0
     initialLightPivot: mathutils.Vector = mathutils.Vector((0.0, 0.0, 0.0))
     initialLightColor: mathutils.Color = mathutils.Color((0.0, 0.0, 0.0))
-    initialLightTilt: mathutils.Vector = mathutils.Vector((0.0,0.0,0.0))
+    initialLightTilt: mathutils.Vector = mathutils.Vector((0.0, 0.0, 0.0))
 
     @ classmethod
     def poll(cls, context):
@@ -857,7 +1029,8 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
                 self.activeSpace3D = bpy.types.SpaceView3D(area.spaces.active)
                 self.activeRegion3D = bpy.types.RegionView3D(
                     area.spaces[0].region_3d)
-        self.toggleViewportVisibility = self.activeSpace3D.overlay.show_overlays # and self.activeSpace3D.show_gizmo
+        # and self.activeSpace3D.show_gizmo
+        self.toggleViewportVisibility = self.activeSpace3D.overlay.show_overlays
         # Set light Object as the active object
         lightObject = context.active_object
         # Set current Light Type
@@ -876,7 +1049,7 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
         self.pivotObject.location = GetLightPivot(lightObject)
         bpy.context.scene.collection.objects.link(self.pivotObject)
         # size pivot correctly
-        cameraPosition : mathutils.Vector = self.activeRegion3D.view_matrix.inverted().translation
+        cameraPosition: mathutils.Vector = self.activeRegion3D.view_matrix.inverted().translation
         distance: mathutils.Vector = self.pivotObject.location - cameraPosition
         self.pivotObject.empty_display_size = distance.magnitude * self.emptyDisplaySize
         # unrotate and place light
@@ -904,7 +1077,7 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
         lightObject: bpy.types.Object = context.active_object
 
         # Set pivot empty display size based on distance
-        cameraPosition : mathutils.Vector = self.activeRegion3D.view_matrix.inverted().translation
+        cameraPosition: mathutils.Vector = self.activeRegion3D.view_matrix.inverted().translation
         newDistance: mathutils.Vector = self.pivotObject.location - cameraPosition
         self.pivotObject.empty_display_size = newDistance.magnitude * self.emptyDisplaySize
 
@@ -938,7 +1111,7 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
             self.changeLightAngle = event.value == 'PRESS'
         if event.type == 'T':
             self.changeLightTilt = event.value == 'PRESS'
-        if event.type in {'SPACE' , 'R'}:
+        if event.type in {'SPACE', 'R'}:
             self.changeLightOrbit = event.value == 'PRESS'
         if event.type == 'V':
             if event.value == 'PRESS':
@@ -965,8 +1138,14 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
             # Remove Operation Labels
             bpy.types.SpaceView3D.draw_handler_remove(self._handle, 'WINDOW')
             # Reset Values
-            SetLightValues(lightObject, self.pivotObject, self.initialLightOrbit, self.initialLightDistance, self.initialLightSize,
-                           self.initialLightBrightness, self.initialLightAngle, self.initialLightPivot, self.initialLightColor)
+            SetLightPivot(lightObject, self.pivotObject,
+                          self.initialLightPivot)
+            SetLightDistance(lightObject, self.initialLightDistance)
+            SetLightOrbit(self.pivotObject, self.initialLightOrbit)
+            SetLightSizeClamped(lightObject, self.initialLightSize)
+            SetLightBrightnessClamped(lightObject, self.initialLightBrightness)
+            SetLightAngle(lightObject, self.initialLightAngle)
+            SetLightColor(lightObject, self.initialLightColor)
             # Update Matrices
             context.view_layer.update()
             # Unparent
@@ -979,181 +1158,65 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
             print('canceled adjusting Light')
             return {'CANCELLED'}
 
-        if event.type in {'MIDDLEMOUSE', 'N', 'T'}:
+        if event.type in {'MIDDLEMOUSE', 'N'}:
             return {'PASS_THROUGH'}
 
         elif self.lightTilt:
             pass
-        
+
         elif self.changeLightColor:
-            # Get Light Color
-            lightObjectData: bpy.types.Light = lightObject.data
-            lightColor: mathutils.Color = lightObjectData.color
-            # Calculate Rate of Change
-            hue: float = (lightColor.hsv[0] + delta.y *
-                          self.hueChangeSensitivity) % 1.0
-            sat: float = bl_math.clamp(
-                lightColor.hsv[1] + delta.x * self.saturationChangeSensitivity, 0.0, 1.0)
-            val: float = lightColor.hsv[2]
-            # Set light Color
-            lightColor.hsv = (hue, sat, val)
+            SetLightColorByDelta(
+                lightObject, delta, self.hueChangeSensitivity, self.saturationChangeSensitivity)
 
         elif self.changeLightPivot:
-            # hit, normal, best_original = raycast(context, event)
-            hitobj, hitlocation, hitnormal, hitindex, hitdistance = raycastCursor(
+            # RAYCAST
+            hitObj, hitLocation, hitNormal, hitIndex, hitDistance = raycastCursor(
                 context, mousepos=(event.mouse_region_x, event.mouse_region_y), debug=False)
-            if hitobj:
-                if event.alt and event.shift: # rotate Pivot, reflected view vector
-                    cameraPosition : mathutils.Vector = self.activeRegion3D.view_matrix.inverted().translation
-                    camToHit : mathutils.Vector = hitlocation - cameraPosition
-                    reflection : mathutils.Vector = camToHit.reflect(hitnormal)
-                    self.pivotObject.rotation_euler = lookAtRotation(reflection, "-x")
-                    self.pivotObject.location = hitlocation
-                    lightObject["pivotPoint"] = (
-                        hitlocation.x, hitlocation.y, hitlocation.z)
-                    #self.activeRegion3D.view_matrix = view_matrix # Change View matrix.
-                    #context.space_data.region_3d.view_perspective = 'CAMERA' # Set as Cam
+            if hitObj:
+                if event.alt and event.shift:  # rotate Pivot, reflected view vector
+                    SetLight_Pivot_Position_Rotation_ByReflection(
+                        self.activeRegion3D, lightObject, self.pivotObject, hitLocation, hitNormal)
                 elif event.shift:  # only move pivot
-                    lightWorldPos: mathutils.Vector = lightObject.matrix_world.to_translation()
-                    lightToPivot: mathutils.Vector = lightWorldPos - self.pivotObject.location
-                    lightToHit: mathutils.Vector = lightWorldPos - hitlocation
-                    prevDistance: float = lightToPivot.magnitude
-                    newDistance: float = lightToHit.magnitude
-                    self.pivotObject.location = hitlocation
-                    self.pivotObject.rotation_euler = lookAtRotation(
-                        lightToHit)
-                    context.view_layer.update()
-                    scalingRatio: float = newDistance / prevDistance
-                    lightObject.location *= scalingRatio
-                    lightObject["pivotPoint"] = (
-                        hitlocation.x, hitlocation.y, hitlocation.z)
+                    SetLight_Pivot_ByHit(
+                        context, lightObject, self.pivotObject, hitLocation)
                 elif event.alt:  # rotate Pivot, normal of Object
-                    self.pivotObject.location = hitlocation
-                    lightObject["pivotPoint"] = (
-                        hitlocation.x, hitlocation.y, hitlocation.z)
-                    self.pivotObject.rotation_euler = lookAtRotation(
-                        hitnormal, "-x")
+                    SetLight_Pivot_Position_Rotation_ByNormal(
+                        lightObject, self.pivotObject, hitLocation, hitNormal)
                 else:  # move pivot and light object
-                    self.pivotObject.location = hitlocation
-                    lightObject["pivotPoint"] = (
-                        hitlocation.x, hitlocation.y, hitlocation.z)
+                    SetLight_Pivot_Position_ByHit(
+                        lightObject, self.pivotObject, hitLocation)
 
         elif self.changeLightAngle:
-            # return early
-            lightObjectData: bpy.types.Light = lightObject.data
-            if lightObjectData.type not in {'AREA', 'SPOT', 'SUN'}:
+
+            if GetLightType(lightObject)[0] not in {'AREA', 'SPOT', 'SUN'}:
                 return {'RUNNING_MODAL'}
-            # Get Delta
-            step: mathutils.Vector = mathutils.Vector(
-                (delta.x, delta.y, delta.z))
-            # Adjust Rate of Change
-            if event.shift:
-                step *= self.slowChangeSpeedPercent
-            step *= self.angleChangeSensitivity
-            rateOfChangeX: float = 1.0 + step.x
-            rateOfChangeY: float = 1.0 + step.y
-            if lightObjectData.type == 'SPOT':
-                spotLightObjectData: bpy.types.SpotLight = lightObjectData
-                spotLightObjectData.spot_size = bl_math.clamp(
-                    spotLightObjectData.spot_size * rateOfChangeX, 0.017, 3.1415)  # in Radians
-                spotLightObjectData.spot_blend = bl_math.clamp(
-                    spotLightObjectData.spot_blend * rateOfChangeY, 0.01, 1.0)
-            elif lightObjectData.type == 'AREA':
-                areaLightObjectData: bpy.types.AreaLight = lightObjectData
-                areaLightObjectData.spread = bl_math.clamp(
-                    areaLightObjectData.spread * rateOfChangeX, 0.017, 3.1415)  # in Radians
-            elif lightObjectData.type == 'SUN':
-                sunLightObjectData: bpy.types.SunLight = lightObjectData
-                sunLightObjectData.angle = bl_math.clamp(
-                    sunLightObjectData.angle * rateOfChangeX, 0.001, 180.0)
+            SetLightAngleByDelta(
+                lightObject, delta, self.angleChangeSensitivity, event.shift, self.slowChangeSpeedPercent)
 
         elif self.changeLightSize:
-            lightObjectData: bpy.types.Light = lightObject.data
-            if lightObjectData.type not in {'AREA', 'POINT', 'SPOT'}:
+            if GetLightType(lightObject)[0] not in {'AREA', 'POINT', 'SPOT'}:
                 return {'RUNNING_MODAL'}
-            # minimum and maximum Light Intensity
-            minimumIntensity: float = 0.001
-            maximumIntensity: float = 10000000
-            # Multiplication Factor
-            changeRate = delta.x * self.sizeChangeSensitivity
-            if event.shift:
-                changeRate *= self.slowChangeSpeedPercent
-            rateOfChange = 1.0 + changeRate
-            # Setting Size
-            if lightObjectData.type == 'AREA':
-                areaLightObjectData: bpy.types.AreaLight = lightObject.data
-                areaLightObjectData.size = bl_math.clamp(
-                    areaLightObjectData.size * rateOfChange, minimumIntensity, maximumIntensity)
-            elif lightObjectData.type == 'POINT':
-                pointLightObjectData: bpy.types.PointLight = lightObject.data
-                pointLightObjectData.shadow_soft_size = bl_math.clamp(
-                    pointLightObjectData.shadow_soft_size * rateOfChange, minimumIntensity, maximumIntensity)
-            elif lightObjectData.type == 'SPOT':
-                spotLightObjectData: bpy.types.SpotLight = lightObject.data
-                spotLightObjectData.shadow_soft_size = bl_math.clamp(
-                    spotLightObjectData.shadow_soft_size * rateOfChange, minimumIntensity, maximumIntensity)
+            SetLightSizeByDeltaClamped(
+                lightObject, delta, self.sizeChangeSensitivity, event.shift, self.slowChangeSpeedPercent)
 
         elif self.changeLightBrightness:
-            # minimum and maximum Light Intensity
-            minimumIntensity: float = 0.001
-            maximumIntensity: float = 10000000
-            # Get Delta
-            step: float = delta.x
-            # Adjust Rate of Change
-            if event.shift:
-                step *= self.slowChangeSpeedPercent
-            step *= self.energyGrowthPercent
-            rateOfChange: float = 1.0 + step
-            # Set enery based on Lamp Type
-            SetLightBrightnessByRatioClamped(lightObject, rateOfChange)
+            SetLightBrightnessByDeltaClamped(
+                lightObject, delta, self.brightnessChangePercent, event.shift, self.slowChangeSpeedPercent)
 
         elif self.changeLightDistance:
-            # Min/Max Distances
-            minDist : float = 0.001
-            maxDist : float = 1000000.0
-            lightObjectData: bpy.types.Light = lightObject.data
-            if lightObjectData.type == 'SUN':
+            if GetLightType(lightObject)[0] == 'SUN':
                 return {'RUNNING_MODAL'}
-            # Get Delta
-            step: float = delta.x
-            # Adjust Rate of Change
-            if event.shift:
-                step *= self.slowChangeSpeedPercent
-            step *= self.zoomSpeedPercent
-            # Calculate Position
-            newPosition = mathutils.Vector((clamp(lightObject.location[0] * (1 + step),minDist,maxDist), lightObject.location[1], lightObject.location[2]))
-            # Calculate Compensation of Lighting by Distance
-            pivotPoint: mathutils.Vector = mathutils.Vector(
-                (lightObject["pivotPoint"][0], lightObject["pivotPoint"][1], lightObject["pivotPoint"][2]))
-            oldLightDistanceToPivot: float = (
-                lightObject.location - pivotPoint).magnitude
-            newLightDistanceToPivot: float = (
-                newPosition - pivotPoint).magnitude
-            adjustedIntensity: float = intensityByInverseSquareLaw(GetLightBrightness(
-                lightObject), oldLightDistanceToPivot, newLightDistanceToPivot)
-            # TODO: not the prettiest but for now it will do
-            if newLightDistanceToPivot < 100.0:
-                # Adjust Light Intensity
-                SetLightBrightness(lightObject, adjustedIntensity)
-                # Set Position
-                lightObject.location = newPosition
+            SetLightDistanceByDeltaClamped(
+                lightObject, delta, self.zoomSpeedPercent, event.shift, self.slowChangeSpeedPercent)
 
         elif self.changeLightOrbit:
-            step: mathutils.Vector = mathutils.Vector(
-                (delta.x, delta.y, delta.z))
-            step *= self.rotationSpeed
-            if event.shift:
-                step *= self.slowChangeSpeedPercent
-            xMultiplicator = step.x
-            yMultiplicator = step.y
-            # add delta rotation to existing rotation and clamp it
-            self.pivotObject.rotation_euler = mathutils.Euler((self.pivotObject.rotation_euler.x, clamp(
-                self.pivotObject.rotation_euler.y - yMultiplicator, -pi/2.0, pi/2.0), self.pivotObject.rotation_euler.z + xMultiplicator))
+            SetLightOrbitByDelta(self, self.pivotObject, delta,
+                                 self.rotationSpeed, event.shift, self.slowChangeSpeedPercent)
 
         # Set Visibility
         if self.activeSpace3D:
             self.activeSpace3D.overlay.show_overlays = self.toggleViewportVisibility
-            #self.activeSpace3D.show_gizmo = self.toggleViewportVisibility
+            # self.activeSpace3D.show_gizmo = self.toggleViewportVisibility
 
         # TODO : Change Pivot Point Size depending on Distance to Pivot
 
@@ -1233,6 +1296,7 @@ class LIGHTCONTROL_Addon_Preferences(bpy.types.AddonPreferences):
 #################################################################
 ####################### REGISTRATION ############################
 #################################################################
+
 addon_keymaps = []
 classes = (LIGHTCONTROL_OT_add_light, LIGHTCONTROL_MT_add_light_pie_menu,
            LIGHTCONTROL_OT_add_light_pie_menu_call, LIGHTCONTROL_OT_adjust_light, LIGHTCONTROL_Addon_Preferences)
