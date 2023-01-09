@@ -882,7 +882,9 @@ class LIGHTCONTROL_OT_add_light(bpy.types.Operator):
         hitobj, hitlocation, hitnormal, hitindex, hitdistance = raycastCursor(
             context, mousepos=mousePosition, debug=False)
         if not hitobj:
-            print("hit nothing, canceled")
+            print('No Object under Mouse Cursor - Nothing Added')
+            self.report(
+                {'INFO'}, 'No Object under Mouse Cursor - Nothing Added')
             return {'CANCELLED'}
         # Calculate Light Distance
         pivotPoint = mathutils.Vector(
@@ -970,6 +972,7 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
     angleChangeSensitivity = 0.01
     sizeChangeSensitivity = 0.01
     hueChangeSensitivity = 0.0003
+    tiltChangeSensitivity = 0.01
     saturationChangeSensitivity = 0.002
     mouseWheelSensitivity = 20.0
     slowChangeSpeedPercent = 0.2
@@ -1041,8 +1044,13 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
             lightObject, self.pivotObject)
         # when there is no custom attribute in the object.
         if "pivotPoint" not in lightObject:
-            print("Property not found => created")
-            context.active_object["pivotPoint"] = (0, 0, 0)  # create it
+            print("pivotPoint property not found => created")
+            lightObject["pivotPoint"] = (0, 0, 0)  # create it
+        # when there is no custom attribute in the object.
+        if GetLightType(lightObject)[0] not in {'AREA', 'SPOT'}:
+            if "tilt" not in lightObject:
+                print("Tilt property not found => created")
+                lightObject["tilt"] = (0, 0, 0)  # create it
         # create pivot
         self.pivotObject = bpy.data.objects.new("temporaryPivot", None)
         self.pivotObject.empty_display_type = 'ARROWS'  # 'SINGLE_ARROW'
@@ -1054,7 +1062,11 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
         self.pivotObject.empty_display_size = distance.magnitude * self.emptyDisplaySize
         # unrotate and place light
         pivotToLight: mathutils.Vector = lightObject.location - self.pivotObject.location
-        lightObject.rotation_euler = (0, pi*0.5, 0)  # make -Z look forward
+        if 'tilt' in lightObject:
+            lightObject.rotation_euler = (
+                0 + lightObject['tilt'][0], pi*0.5 + + lightObject['tilt'][1], 0 + + lightObject['tilt'][2])
+        else:
+            lightObject.rotation_euler = (0, pi*0.5, 0)  # make -Z look forward
         lightObject.location = mathutils.Vector((pivotToLight.magnitude, 0, 0))
         # set parenting of light and pivot
         lightObject.parent_type = 'OBJECT'
@@ -1161,8 +1173,23 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
         if event.type in {'MIDDLEMOUSE', 'N'}:
             return {'PASS_THROUGH'}
 
-        elif self.lightTilt:
-            pass
+        elif self.changeLightTilt:
+            # break early
+            if GetLightType(lightObject)[0] not in {'AREA', 'SPOT'}:
+                return {'RUNNING_MODAL'}
+            # Multiplication Factor
+            rateOfChange: mathutils.Vector = delta * self.tiltChangeSensitivity
+            if event.shift:
+                rateOfChange *= self.slowChangeSpeedPercent
+            rateOfChangeAngleX: float = radians(rateOfChange.x)
+            rateOfChangeAngleY: float = radians(rateOfChange.y)
+            # Setting Tilt
+            tilt = (lightObject.rotation_euler.x + rateOfChangeAngleX,
+                    lightObject.rotation_euler.y + rateOfChangeAngleY, lightObject.rotation_euler.z)
+            lightObject.rotation_euler = mathutils.Euler(tilt)
+            # Update Tilt on Object
+            lightObject['tilt'] = (
+                lightObject.rotation_euler.x, lightObject.rotation_euler.y - pi*0.5, lightObject.rotation_euler.z)
 
         elif self.changeLightColor:
             SetLightColorByDelta(
@@ -1176,12 +1203,18 @@ class LIGHTCONTROL_OT_adjust_light(bpy.types.Operator):
                 if event.alt and event.shift:  # rotate Pivot, reflected view vector
                     SetLight_Pivot_Position_Rotation_ByReflection(
                         self.activeRegion3D, lightObject, self.pivotObject, hitLocation, hitNormal)
+                    lightObject.rotation_euler = (0, pi*0.5, 0)
+                    lightObject['tilt'] = (0.0, 0.0, 0.0)
                 elif event.shift:  # only move pivot
                     SetLight_Pivot_ByHit(
                         context, lightObject, self.pivotObject, hitLocation)
+                    lightObject.rotation_euler = (0, pi*0.5, 0)
+                    lightObject['tilt'] = (0.0, 0.0, 0.0)
                 elif event.alt:  # rotate Pivot, normal of Object
                     SetLight_Pivot_Position_Rotation_ByNormal(
                         lightObject, self.pivotObject, hitLocation, hitNormal)
+                    lightObject.rotation_euler = (0, pi*0.5, 0)
+                    lightObject['tilt'] = (0.0, 0.0, 0.0)
                 else:  # move pivot and light object
                     SetLight_Pivot_Position_ByHit(
                         lightObject, self.pivotObject, hitLocation)
