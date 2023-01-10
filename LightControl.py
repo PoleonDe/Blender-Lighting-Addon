@@ -19,7 +19,7 @@ from gpu_extras.batch import batch_for_shader
 
 bl_info = {
     "name": "Light Control",
-    "description": "Tools that lets you easily create lights on Mouseposition (Shift + E) and adjust lights (when light active, E)",
+    "description": "Tools that let you easily create lights on Mouseposition (Shift + E) and adjust lights (when light active, E) fast and intuetively",
     "author": "Malte Decker",
     "version": (0, 9, 0),
     "blender": (3, 3, 0),
